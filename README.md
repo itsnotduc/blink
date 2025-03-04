@@ -1,6 +1,6 @@
 # Blink 🚇⚡
 
-Blink is a tap-to-pay transit app designed for Vietnam’s metro and VinBus network 🚍. Built from scratch during a 30-day coding bootcamp, this app helps users plan routes, pay fares, and track rides in real-time. Powered by Python (FastAPI) for the backend, React Native (Expo) for the mobile frontend, PostgreSQL for data storage, Redis for caching, and Docker/Render for deployment—all using free tools! 💻 Features include route planning, fare management, real-time tracking, and future ML-powered arrival predictions. Let’s make transit smooth and smart! 🌍
+Blink is a tap-to-pay transit app designed for Vietnam’s metro and VinBus network 🚍. Built from scratch during a 30-day coding bootcamp (on-my-own, self-taught), this app helps users plan routes, pay fares, and track rides in real-time. Powered by Python (FastAPI) for the backend, React Native (Expo) for the mobile frontend, PostgreSQL for data storage, Redis for caching, and Docker/Render for deployment—all using free tools! 💻 Features include route planning, fare management, real-time tracking, and future ML-powered arrival predictions. Let’s make transit smooth and smart! 🌍
 
 ## ✨ Features
 - **Route Planning** 🗺️: Find the fastest path through Saigon’s metro using BFS-powered graph traversal—like going from Bến Thành to Suối Tiên in a snap!  
@@ -18,10 +18,13 @@ Blink is a tap-to-pay transit app designed for Vietnam’s metro and VinBus netw
 - **Data Structures**: Arrays, hash tables, trees, and graphs to power route planning and more 📊  
 
 ## 🎨 Design/Sketch
-Check out the design I created for Blink in Figma—it’s got all the vibes!  
+Check out the design I created for Blink in Figma—it’s got all the vibes!
+**Banner**
 ![Blink App Banner](/readme/BlinkBanner.png)
+**NFC Home Screen**
 ![Blink App 1](/readme/BlinkNFCLight.png)
 ![Blink App 2](/readme/BlinkNFCDark.png)
+**QR Home Screen**
 ![Blink App 3](/readme/BlinkQRLight.png)
 ![Blink App 4](/readme/BlinkQRDark.png)
 
