@@ -19,13 +19,13 @@ Blink is a tap-to-pay transit app designed for Vietnam’s metro and VinBus netw
 
 ## 🎨 Design/Sketch
 Check out the design I created for Blink in Figma—it’s got all the vibes!
-**Banner**
-![Blink App Banner](/readme/BlinkBanner.png)
-**NFC Home Screen**
-![Blink App 1](/readme/BlinkNFCLight.png)
-![Blink App 2](/readme/BlinkNFCDark.png)
-**QR Home Screen**
-![Blink App 3](/readme/BlinkQRLight.png)
-![Blink App 4](/readme/BlinkQRDark.png)
+- **Banner**
+- ![Blink App Banner](/readme/BlinkBanner.png)
+- **NFC Home Screen**
+- ![Blink App 1](/readme/BlinkNFCLight.png)
+- ![Blink App 2](/readme/BlinkNFCDark.png)
+- **QR Home Screen**
+- ![Blink App 3](/readme/BlinkQRLight.png)
+- ![Blink App 4](/readme/BlinkQRDark.png)
 
 *Caption*: A mockup of the Blink app UI, featuring the route planner, timetable, and tap-to-pay screens. 🚉
