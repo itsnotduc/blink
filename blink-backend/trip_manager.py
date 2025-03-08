@@ -1,477 +1,460 @@
-# blink-backend/trip_manager.py
-from collections import deque
+import heapq
 from datetime import datetime, timedelta
 from db import get_db_connection, release_db_connection
 
-class Node:
-    def __init__(self, stop):
-        self.stop = stop
-        self.left = None
-        self.right = None
-
 class TripManager:
     def __init__(self):
-        # Updated station_map with new stations
+        # Updated station_map with station names and IDs
         self.station_map = {
-            # Line 1: Ben Thanh -> Suoi Tien
-            "Ben Thanh": "H1BT", "Ba Son": "H1BS", "Van Thanh": "H1VT", "Thao Dien": "H1TD", "An Phu": "H1AP", "Suoi Tien": "H1ST", "Thu Duc": "H1TDU",
-            # Line 2: An Suong -> Thu Thiem
-            "An Suong": "H2AS", "Tan Chanh Hiep": "H2TC", "Thu Thiem": "H2TT", "Tao Dan": "H2TD", "Le Thi Rieng": "H2LT", "Pham Van Hai": "H2PV", "Ba Queo": "H2BQ",
-            # Line 3: Tan Binh -> Thu Duc -> Hiep Phuoc
-            "Tan Kien": "H3TK", "Phu Lam": "H3PL", "Cholon": "H3CH", "Cong Hoa": "H3CO", "Hiep Binh Phuoc": "H3HB", "Nguyen Thuong Hien": "H3NT",
-            "Tan Binh": "H3TB", "Tan Son Nhat Airport": "H3TS", "Thu Duc": "H1TDU", "Hiep Phuoc": "H3HP",
-            # Line 4: Thanh Xuan -> Nguyen Van Linh
-            "Thanh Xuan": "H4TX", "Nga Tu Ga": "H4NT", "An Loc": "H4AL", "An Nhon": "H4AN", "Nguyen Van Luc": "H4NL", "Go Vap": "H4GV", "Gia Dinh Park": "H4GD", "Phu Nhuan": "H4PN",
-            "Saigon Bridge": "H4SB", "District 7": "H4D7", "Nguyen Van Linh": "H4NV",
-            # Line 5: Can Gio -> Tan Phu
-            "Bay Hien": "H5BH", "Sai Gon Bridge": "H5SG", "Tan Cang": "H5TC", "Can Gio": "H5CG", "Tan Phu": "H5TP", "Tan Son Nhat Airport": "H3TS", "District 7": "H4D7",
-            # Line 6: Ba Queo -> Phuoc Long
-            "Phuoc Long": "H6PL"
+            # Line 1
+            "Mien Dong": "S101MD",
+            "Suoi Tien Amusement Park": "S102STAP",
+            "Saigon Hi-tech Park": "S103SHTP",
+            "Thu Duc": "S104TD",
+            "Binh Thai": "S105BT",
+            "Phuoc Long": "S106PL",
+            "Rach Chiec": "S107RC",
+            "Anphu": "S108AP",
+            "Thao Dien": "S109TD",  # Connects to MR2
+            "Saigon Bridge": "S110SB",  # Connects to Line 5
+            "Van Thanh": "S111VT",
+            "Ba Son": "S112BS",
+            "Opera House": "S113OH",
+            "Ben Thanh": "S114BT",  # Connects to Lines 2, 3A, 4
+
+            # Line 2
+            "Cu Chi": "S201CC",
+            "An Suong": "S202AS",
+            "Tan Thoi Nhat": "S203TTN",
+            "Tan Binh": "S204TB",
+            "Pham Van Bach": "S205PVB",
+            "Ba Queo": "S206BQ",  # Connects to Line 6
+            "Nguyen Hong Dao": "S207NHD",
+            "Bay Hien": "S208BH",  # Connects to Line 5
+            "Pham Van Hai": "S209PVH",
+            "Le Thi Rieng Park": "S210LTRP",
+            "Hoa Hung": "S211HH",
+            "Dan Chu": "S212DC",
+            "Tao Dan": "S213TD",  # Connects to Line 3B
+            # "Ben Thanh": "S114BT",  # Already defined, connects to Lines 1, 3A, 4
+            "Ham Nghi": "S214HN",
+            "Thu Thiem Square": "S215TTS",
+            "Mai Chi Tho": "S216MCT",
+            "Tran Nao": "S217TN",  # Connects to MR2
+            "Binh Khanh": "S218BK",
+            "Thu Thiem": "S219TT",
+
+            # Line 3A
+            "Tan Kien": "S301TK",
+            "Eastern Bus Station": "S302EBS",
+            "Phu Lam Park": "S303PLP",
+            "Phu Lam": "S304PL",  # Connects to Line 6
+            "Cay Go": "S305CG",
+            "Cho Lon": "S306CL",
+            "Thuan Kieu Plaza": "S307TKP",
+            "University of Meds and Pharma": "S308UMP",  # Connects to Line 5
+            "Hoa Binh Park": "S309HBP",
+            "Cong Hoa": "S310CH",
+            "Thai Binh": "S311TB",
+            # "Ben Thanh": "S114BT",  # Already defined, connects to Lines 1, 2, 4
+
+            # Line 3B
+            "Di An": "S351DA",
+            "Ga An Binh": "S352GAB",
+            "Tam Binh": "S353TB",
+            "Hiep Binh Phuoc": "S354HBP",
+            "Binh Trieu": "S355BT",
+            "Xo Viet Nghe Tinh": "S356XVNT",
+            "Hang Xanh": "S357HX",  # Connects to Line 5
+            "Nguyen Cuu Van": "S358NCV",
+            "Saigon Zoo": "S359SZ",
+            "Hoa Lu": "S360HL",
+            "Turtle Lake": "S361TL",  # Connects to Line 4
+            "Independence Palace": "S362IP",
+            # "Tao Dan": "S213TD",  # Already defined, connects to Line 2
+            # "Cong Hoa": "S310CH",  # Already defined, connects to Line 3A
+
+            # Line 4
+            "Thanh Xuan": "S401TX",
+            "Nga Tu Ga": "S402NTG",
+            "An Loc Bridge": "S403ALB",
+            "An Nhon": "S404AN",
+            "Nguyen Van Luong": "S405NVL",
+            "Go Vap": "S406GV",  # Connects to MR3
+            "175 Hospital": "S407175H",
+            "Gia Dinh Park": "S408GDP",  # Connects to Line 4B
+            "Phu Nhuan": "S409PN",  # Connects to Line 5
+            "Kieu Bridge": "S410KB",
+            "Le Van Tam Park": "S411LVTP",
+            # "Turtle Lake": "S361TL",  # Already defined, connects to Line 3B
+            # "Ben Thanh": "S114BT",  # Already defined, connects to Lines 1, 2, 3A
+            "Ong Lanh Bridge": "S412OLB",
+            "Yersin": "S413YS",
+            "Khanh Hoa": "S414KH",
+            "Tan Hung": "S415TH",
+            "Nguyen Huu Tho": "S416NHT",
+            "Nguyen Van Linh": "S417NVL",  # Connects to MR2
+            "Phuoc Kien": "S418PK",
+            "Pham Huu Lau": "S419PHL",
+            "Ba Chiem": "S420BC",
+            "Long Thoi": "S421LT",
+            "Hiep Phuoc": "S422HP",
+
+            # Line 4B
+            # "Gia Dinh Park": "S408GDP",  # Already defined, connects to Line 4
+            "Tan Son Nhat": "S451TSN",  # Connects to Line 4B1
+            "Lang Cha Ca": "S452LCC",  # Connects to Line 5
+
+            # Line 4B1
+            # "Tan Son Nhat": "S451TSN",  # Already defined, connects to Line 4B
+            "Hoang Van Thu Park": "S461HVTP",  # Connects to Line 5
+
+            # Line 5
+            # "Saigon Bridge": "S110SB",  # Already defined, connects to Line 1
+            # "Hang Xanh": "S357HX",  # Already defined, connects to Line 3B
+            "Ba Chieu": "S501BC",
+            "Nguyen Van Dau": "S502NVD",
+            # "Phu Nhuan": "S409PN",  # Already defined, connects to Line 4
+            # "Hoang Van Thu Park": "S461HVTP",  # Already defined, connects to Line 4B1
+            # "Lang Cha Ca": "S452LCC",  # Already defined, connects to Line 4B
+            # "Bay Hien": "S208BH",  # Already defined, connects to Line 2
+            "Tan Binh Market": "S503TBM",
+            "Bac Hai": "S504BH",
+            "HCMC Uni of Tech": "S505HUT",
+            "Phu Tho": "S506PT",
+            # "Uni of Meds and Pharma": "S308UMP",  # Already defined, connects to Line 3A
+            "Xom Cui": "S507XC",
+            "District 8 Bus Station": "S508D8BS",
+            "Binh Hung": "S509BH",  # Connects to MR2
+            "Can Giuoc": "S510CG",
+
+            # Line 6
+            # "Ba Queo": "S206BQ",  # Already defined, connects to Line 2
+            "Au Co": "S601AC",
+            "Vuon Lai": "S602VL",
+            "Tan Phu": "S603TP",
+            "Hoa Binh": "S604HB",
+            "Luy Ban Bich": "S605LBB",
+            # "Phu Lam": "S304PL",  # Already defined, connects to Line 3A
+
+            # Monorail MR2
+            "Thanh Da": "M201TD",
+            # "Thao Dien": "S109TD",  # Already defined, connects to Line 1
+            "Binh An": "M202BA",
+            "Luong Dinh Cua": "M203LDC",
+            # "Tran Nao": "S217TN",  # Already defined, connects to Line 2
+            "South Thu Thiem": "M204STT",
+            "Huynh Tan Phat": "M205HTP",
+            "Tan Thuan Tay": "M206TTT",
+            "Nguyen Thi Thap": "M207NTT",
+            "Phu My Hung": "M208PMH",
+            "Nguyen Duc Canh": "M209NDC",
+            # "Nguyen Van Linh": "S417NVL",  # Already defined, connects to Line 4
+            "RMIT": "M210RMIT",
+            "Cau Ong Be": "M211COB",
+            "Pham Hung": "M212PH",
+            "Rach Hiep An": "M213RHA",
+            # "Binh Hung": "S509BH",  # Already defined, connects to Line 5
+
+            # Monorail MR3
+            "Tan Chanh Hiep": "M301TCH",
+            "Quang Trung Software City": "M302QTSC",
+            "Phan Huy Ich": "M303PHI",
+            "Tan Son": "M304TS",
+            "Hanh Thong Tay": "M305HTT",
+            "Thong Nhat": "M306TN",
+            "Xom Thuoc": "M307XT",
+            # "Go Vap": "S406GV",  # Already defined, connects to Line 4
         }
 
-        # Updated station_graph with new connections
+        # Updated station_graph with connections
         self.station_graph = {
-            # Line 1: Ben Thanh -> Suoi Tien
-            "H1BT": ["H1BS"], "H1BS": ["H1BT", "H1VT"], "H1VT": ["H1BS", "H1TD", "H4PN"], "H1TD": ["H1VT", "H1AP"], "H1AP": ["H1TD", "H1ST"], "H1ST": ["H1AP", "H1TDU"], "H1TDU": ["H1ST"],
-            # Line 2: An Suong -> Thu Thiem
-            "H2AS": ["H2TC"], "H2TC": ["H2AS", "H2BQ"], "H2BQ": ["H2TC", "H2PV"], "H2PV": ["H2BQ", "H2LT"], "H2LT": ["H2PV", "H2TD"], "H2TD": ["H2LT", "H1BT"], "H1BT": ["H2TD", "H2TT"], "H2TT": ["H1BT", "H1TDU"],
-            # Line 3: Tan Binh -> Thu Duc -> Hiep Phuoc
-            "H3TK": ["H3PL"], "H3PL": ["H3TK", "H3CH"], "H3CH": ["H3PL", "H1BT"], "H1BT": ["H3CH", "H3TB"], "H3TB": ["H1BT", "H3TS"], "H3TS": ["H3TB", "H3NT"], "H3NT": ["H3TS", "H1BS"], "H1BS": ["H3NT", "H3HB"], "H3HB": ["H1BS", "H1TDU"], "H1TDU": ["H3HB", "H3HP"], "H3HP": ["H1TDU"],
-            # Line 4: Thanh Xuan -> Nguyen Van Linh
-            "H4TX": ["H4NT"], "H4NT": ["H4TX", "H4AL"], "H4AL": ["H4NT", "H4AN"], "H4AN": ["H4AL", "H4NL"], "H4NL": ["H4AN", "H4GV"], "H4GV": ["H4NL", "H4GD"], "H4GD": ["H4GV", "H4PN"], "H4PN": ["H4GD", "H1VT", "H4SB"], "H4SB": ["H4PN", "H4D7"], "H4D7": ["H4SB", "H4NV"], "H4NV": ["H4D7"],
-            # Line 5: Can Gio -> Tan Phu
-            "H5CG": ["H5BH"], "H5BH": ["H5CG", "H1BT"], "H1BT": ["H5BH", "H5TC"], "H5TC": ["H1BT", "H5SG"], "H5SG": ["H5TC", "H3TS"], "H3TS": ["H5SG", "H4D7"], "H4D7": ["H3TS", "H5TP"], "H5TP": ["H4D7"],
-            # Line 6: Ba Queo -> Phuoc Long
-            "H2BQ": ["H2TT"], "H2TT": ["H2BQ", "H6PL"], "H6PL": ["H2TT"]
+            # Line 1
+            "S101MD": [("S102STAP", "Line 1")],
+            "S102STAP": [("S101MD", "Line 1"), ("S103SHTP", "Line 1")],
+            "S103SHTP": [("S102STAP", "Line 1"), ("S104TD", "Line 1")],
+            "S104TD": [("S103SHTP", "Line 1"), ("S105BT", "Line 1")],
+            "S105BT": [("S104TD", "Line 1"), ("S106PL", "Line 1")],
+            "S106PL": [("S105BT", "Line 1"), ("S107RC", "Line 1")],
+            "S107RC": [("S106PL", "Line 1"), ("S108AP", "Line 1")],
+            "S108AP": [("S107RC", "Line 1"), ("S109TD", "Line 1")],
+            "S109TD": [("S108AP", "Line 1"), ("M201TD", "MR2")],  # Connects to MR2
+            "S110SB": [("S109TD", "Line 1"), ("S357HX", "Line 5")],  # Connects to Line 5
+            "S111VT": [("S110SB", "Line 1"), ("S112BS", "Line 1")],
+            "S112BS": [("S111VT", "Line 1"), ("S113OH", "Line 1")],
+            "S113OH": [("S112BS", "Line 1"), ("S114BT", "Line 1")],
+            "S114BT": [("S113OH", "Line 1"), ("S214HN", "Line 2"), ("S311TB", "Line 3A"), ("S412OLB", "Line 4")],  # Connects to Lines 2, 3A, 4
+
+            # Line 2
+            "S201CC": [("S202AS", "Line 2")],
+            "S202AS": [("S201CC", "Line 2"), ("S203TTN", "Line 2")],
+            "S203TTN": [("S202AS", "Line 2"), ("S204TB", "Line 2")],
+            "S204TB": [("S203TTN", "Line 2"), ("S205PVB", "Line 2")],
+            "S205PVB": [("S204TB", "Line 2"), ("S206BQ", "Line 2")],
+            "S206BQ": [("S205PVB", "Line 2"), ("S601AC", "Line 6")],  # Connects to Line 6
+            "S207NHD": [("S206BQ", "Line 2"), ("S208BH", "Line 2")],
+            "S208BH": [("S207NHD", "Line 2"), ("S502NVD", "Line 5")],  # Connects to Line 5
+            "S209PVH": [("S208BH", "Line 2"), ("S210LTRP", "Line 2")],
+            "S210LTRP": [("S209PVH", "Line 2"), ("S211HH", "Line 2")],
+            "S211HH": [("S210LTRP", "Line 2"), ("S212DC", "Line 2")],
+            "S212DC": [("S211HH", "Line 2"), ("S213TD", "Line 2")],
+            "S213TD": [("S212DC", "Line 2"), ("S362IP", "Line 3B")],  # Connects to Line 3B
+            "S114BT": [("S113OH", "Line 1"), ("S214HN", "Line 2"), ("S311TB", "Line 3A"), ("S412OLB", "Line 4")],
+            "S214HN": [("S114BT", "Line 2"), ("S215TTS", "Line 2")],
+            "S215TTS": [("S214HN", "Line 2"), ("S216MCT", "Line 2")],
+            "S216MCT": [("S215TTS", "Line 2"), ("S217TN", "Line 2")],
+            "S217TN": [("S216MCT", "Line 2"), ("S218BK", "Line 2"), ("M203LDC", "MR2")],  # Fixed here
+            "S218BK": [("S217TN", "Line 2"), ("S219TT", "Line 2")],
+            "S219TT": [("S218BK", "Line 2")],
+
+            # Line 3A
+            "S301TK": [("S302EBS", "Line 3A")],
+            "S302EBS": [("S301TK", "Line 3A"), ("S303PLP", "Line 3A")],
+            "S303PLP": [("S302EBS", "Line 3A"), ("S304PL", "Line 3A")],
+            "S304PL": [("S303PLP", "Line 3A"), ("S605LBB", "Line 6")],  # Connects to Line 6
+            "S305CG": [("S304PL", "Line 3A"), ("S306CL", "Line 3A")],
+            "S306CL": [("S305CG", "Line 3A"), ("S307TKP", "Line 3A")],
+            "S307TKP": [("S306CL", "Line 3A"), ("S308UMP", "Line 3A")],
+            "S308UMP": [("S307TKP", "Line 3A"), ("S506PT", "Line 5")],  # Connects to Line 5
+            "S309HBP": [("S308UMP", "Line 3A"), ("S310CH", "Line 3A")],
+            "S310CH": [("S309HBP", "Line 3A"), ("S362IP", "Line 3B")],  # Connects to Line 3B
+            "S311TB": [("S310CH", "Line 3A"), ("S114BT", "Line 3A")],
+            # "S114BT": Already defined
+
+            # Line 3B
+            "S351DA": [("S352GAB", "Line 3B")],
+            "S352GAB": [("S351DA", "Line 3B"), ("S353TB", "Line 3B")],
+            "S353TB": [("S352GAB", "Line 3B"), ("S354HBP", "Line 3B")],
+            "S354HBP": [("S353TB", "Line 3B"), ("S355BT", "Line 3B")],
+            "S355BT": [("S354HBP", "Line 3B"), ("S356XVNT", "Line 3B")],
+            "S356XVNT": [("S355BT", "Line 3B"), ("S357HX", "Line 3B")],
+            "S357HX": [("S356XVNT", "Line 3B"), ("S110SB", "Line 5")],  # Connects to Line 5
+            "S358NCV": [("S357HX", "Line 3B"), ("S359SZ", "Line 3B")],
+            "S359SZ": [("S358NCV", "Line 3B"), ("S360HL", "Line 3B")],
+            "S360HL": [("S359SZ", "Line 3B"), ("S361TL", "Line 3B")],
+            "S361TL": [("S360HL", "Line 3B"), ("S411LVTP", "Line 4")],  # Connects to Line 4
+            "S362IP": [("S361TL", "Line 3B"), ("S213TD", "Line 2"), ("S310CH", "Line 3A")],  # Connects to Lines 2, 3A
+            # "S213TD": Already defined
+            # "S310CH": Already defined
+
+            # Line 4
+            "S401TX": [("S402NTG", "Line 4")],
+            "S402NTG": [("S401TX", "Line 4"), ("S403ALB", "Line 4")],
+            "S403ALB": [("S402NTG", "Line 4"), ("S404AN", "Line 4")],
+            "S404AN": [("S403ALB", "Line 4"), ("S405NVL", "Line 4")],
+            "S405NVL": [("S404AN", "Line 4"), ("S406GV", "Line 4")],
+            "S406GV": [("S405NVL", "Line 4"), ("M307XT", "MR3")],  # Connects to MR3
+            "S407175H": [("S406GV", "Line 4"), ("S408GDP", "Line 4")],
+            "S408GDP": [("S407175H", "Line 4"), ("S451TSN", "Line 4B")],  # Connects to Line 4B
+            "S409PN": [("S408GDP", "Line 4"), ("S502NVD", "Line 5")],  # Connects to Line 5
+            "S410KB": [("S409PN", "Line 4"), ("S411LVTP", "Line 4")],
+            "S411LVTP": [("S410KB", "Line 4"), ("S361TL", "Line 4")],  # Connects to Line 3B
+            # "S361TL": Already defined
+            # "S114BT": Already defined
+            "S412OLB": [("S114BT", "Line 4"), ("S413YS", "Line 4")],
+            "S413YS": [("S412OLB", "Line 4"), ("S414KH", "Line 4")],
+            "S414KH": [("S413YS", "Line 4"), ("S415TH", "Line 4")],
+            "S415TH": [("S414KH", "Line 4"), ("S416NHT", "Line 4")],
+            "S416NHT": [("S415TH", "Line 4"), ("S417NVL", "Line 4")],
+            "S417NVL": [("S416NHT", "Line 4"), ("M209NDC", "MR2")],  # Connects to MR2
+            "S418PK": [("S417NVL", "Line 4"), ("S419PHL", "Line 4")],
+            "S419PHL": [("S418PK", "Line 4"), ("S420BC", "Line 4")],
+            "S420BC": [("S419PHL", "Line 4"), ("S421LT", "Line 4")],
+            "S421LT": [("S420BC", "Line 4"), ("S422HP", "Line 4")],
+            "S422HP": [("S421LT", "Line 4")],
+
+            # Line 4B
+            # "S408GDP": Already defined
+            "S451TSN": [("S408GDP", "Line 4B"), ("S461HVTP", "Line 4B1")],  # Connects to Line 4B1
+            "S452LCC": [("S451TSN", "Line 4B"), ("S461HVTP", "Line 5")],  # Connects to Line 5
+
+            # Line 4B1
+            # "S451TSN": Already defined
+            "S461HVTP": [("S451TSN", "Line 4B1"), ("S409PN", "Line 5")],  # Connects to Line 5
+
+            # Line 5
+            # "S110SB": Already defined
+            # "S357HX": Already defined
+            "S501BC": [("S357HX", "Line 5"), ("S502NVD", "Line 5")],
+            "S502NVD": [("S501BC", "Line 5"), ("S409PN", "Line 5")],
+            # "S409PN": Already defined
+            # "S461HVTP": Already defined
+            # "S452LCC": Already defined
+            # "S208BH": Already defined
+            "S503TBM": [("S208BH", "Line 5"), ("S504BH", "Line 5")],
+            "S504BH": [("S503TBM", "Line 5"), ("S505HUT", "Line 5")],
+            "S505HUT": [("S504BH", "Line 5"), ("S506PT", "Line 5")],
+            "S506PT": [("S505HUT", "Line 5"), ("S308UMP", "Line 5")],
+            # "S308UMP": Already defined
+            "S507XC": [("S308UMP", "Line 5"), ("S508D8BS", "Line 5")],
+            "S508D8BS": [("S507XC", "Line 5"), ("S509BH", "Line 5")],
+            "S509BH": [("S508D8BS", "Line 5"), ("M213RHA", "MR2")],  # Connects to MR2
+            "S510CG": [("S509BH", "Line 5")],
+
+            # Line 6
+            # "S206BQ": Already defined
+            "S601AC": [("S206BQ", "Line 6"), ("S602VL", "Line 6")],
+            "S602VL": [("S601AC", "Line 6"), ("S603TP", "Line 6")],
+            "S603TP": [("S602VL", "Line 6"), ("S604HB", "Line 6")],
+            "S604HB": [("S603TP", "Line 6"), ("S605LBB", "Line 6")],
+            "S605LBB": [("S604HB", "Line 6"), ("S304PL", "Line 6")],
+            # "S304PL": Already defined
+
+            # Monorail MR2
+            "M201TD": [("S109TD", "MR2"), ("M202BA", "MR2")],
+            "M202BA": [("M201TD", "MR2"), ("M203LDC", "MR2")],
+            "M203LDC": [("M202BA", "MR2"), ("S217TN", "MR2")],
+            # "S217TN": Already defined
+            "M204STT": [("S217TN", "MR2"), ("M205HTP", "MR2")],
+            "M205HTP": [("M204STT", "MR2"), ("M206TTT", "MR2")],
+            "M206TTT": [("M205HTP", "MR2"), ("M207NTT", "MR2")],
+            "M207NTT": [("M206TTT", "MR2"), ("M208PMH", "MR2")],
+            "M208PMH": [("M207NTT", "MR2"), ("M209NDC", "MR2")],
+            "M209NDC": [("M208PMH", "MR2"), ("S417NVL", "MR2")],
+            # "S417NVL": Already defined
+            "M210RMIT": [("S417NVL", "MR2"), ("M211COB", "MR2")],
+            "M211COB": [("M210RMIT", "MR2"), ("M212PH", "MR2")],
+            "M212PH": [("M211COB", "MR2"), ("M213RHA", "MR2")],
+            "M213RHA": [("M212PH", "MR2"), ("S509BH", "MR2")],
+            # "S509BH": Already defined
+
+            # Monorail MR3
+            "M301TCH": [("M302QTSC", "MR3")],
+            "M302QTSC": [("M301TCH", "MR3"), ("M303PHI", "MR3")],
+            "M303PHI": [("M302QTSC", "MR3"), ("M304TS", "MR3")],
+            "M304TS": [("M303PHI", "MR3"), ("M305HTT", "MR3")],
+            "M305HTT": [("M304TS", "MR3"), ("M306TN", "MR3")],
+            "M306TN": [("M305HTT", "MR3"), ("M307XT", "MR3")],
+            "M307XT": [("M306TN", "MR3"), ("S406GV", "MR3")],
+            # "S406GV": Already defined
         }
 
+        # Updated valid_lines
+        self.valid_lines = {"Line 1", "Line 2", "Line 3A", "Line 3B", "Line 4", "Line 4B", "Line 4B1", "Line 5", "Line 6", "MR2", "MR3"}
         self.route_tree = None
 
-        # Updated timetable with new frequencies
-        self.timetable = {
-            "Line 1": {
-                "H1BT": {
-                    "peak": self.generate_schedule("06:00", "09:00", 4) + self.generate_schedule("16:00", "19:00", 4),
-                    "off_peak": self.generate_schedule("09:00", "16:00", 9) + self.generate_schedule("19:00", "23:00", 9),
-                    "late": self.generate_schedule("23:00", "00:30", 15),
-                    "express": self.generate_schedule("06:00", "09:00", 15) + self.generate_schedule("16:00", "19:00", 15),
-                    "closing_time": "00:30"
-                },
-                "H1BS": {
-                    "peak": self.generate_schedule("06:02", "09:02", 4) + self.generate_schedule("16:02", "19:02", 4),
-                    "off_peak": self.generate_schedule("09:02", "16:02", 9) + self.generate_schedule("19:02", "23:02", 9),
-                    "late": self.generate_schedule("23:02", "00:32", 15),
-                    "express": self.generate_schedule("06:02", "09:02", 15) + self.generate_schedule("16:02", "19:02", 15),
-                    "closing_time": "00:30"
-                },
-                "H1VT": {
-                    "peak": self.generate_schedule("06:04", "09:04", 4) + self.generate_schedule("16:04", "19:04", 4),
-                    "off_peak": self.generate_schedule("09:04", "16:04", 9) + self.generate_schedule("19:04", "23:04", 9),
-                    "late": self.generate_schedule("23:04", "00:34", 15),
-                    "closing_time": "00:30"
-                },
-                "H1TD": {
-                    "peak": self.generate_schedule("06:06", "09:06", 4) + self.generate_schedule("16:06", "19:06", 4),
-                    "off_peak": self.generate_schedule("09:06", "16:06", 9) + self.generate_schedule("19:06", "23:06", 9),
-                    "late": self.generate_schedule("23:06", "00:36", 15),
-                    "express": self.generate_schedule("06:06", "09:06", 15) + self.generate_schedule("16:06", "19:06", 15),
-                    "closing_time": "00:30"
-                },
-                "H1AP": {
-                    "peak": self.generate_schedule("06:08", "09:08", 4) + self.generate_schedule("16:08", "19:08", 4),
-                    "off_peak": self.generate_schedule("09:08", "16:08", 9) + self.generate_schedule("19:08", "23:08", 9),
-                    "late": self.generate_schedule("23:08", "00:38", 15),
-                    "closing_time": "00:30"
-                },
-                "H1ST": {
-                    "peak": self.generate_schedule("06:10", "09:10", 4) + self.generate_schedule("16:10", "19:10", 4),
-                    "off_peak": self.generate_schedule("09:10", "16:10", 9) + self.generate_schedule("19:10", "23:10", 9),
-                    "late": self.generate_schedule("23:10", "00:40", 15),
-                    "express": self.generate_schedule("06:10", "09:10", 15) + self.generate_schedule("16:10", "19:10", 15),
-                    "closing_time": "00:30"
-                },
-                "H1TDU": {
-                    "peak": self.generate_schedule("06:12", "09:12", 4) + self.generate_schedule("16:12", "19:12", 4),
-                    "off_peak": self.generate_schedule("09:12", "16:12", 9) + self.generate_schedule("19:12", "23:12", 9),
-                    "late": self.generate_schedule("23:12", "00:42", 15),
-                    "express": self.generate_schedule("06:12", "09:12", 15) + self.generate_schedule("16:12", "19:12", 15),
-                    "closing_time": "00:30"
-                }
-            },
-            "Line 2": {
-                "H2AS": {
-                    "peak": self.generate_schedule("06:00", "09:00", 4) + self.generate_schedule("16:00", "19:00", 4),
-                    "off_peak": self.generate_schedule("09:00", "16:00", 9) + self.generate_schedule("19:00", "23:00", 9),
-                    "late": self.generate_schedule("23:00", "00:30", 20),
-                    "closing_time": "00:30"
-                },
-                "H2TC": {
-                    "peak": self.generate_schedule("06:02", "09:02", 4) + self.generate_schedule("16:02", "19:02", 4),
-                    "off_peak": self.generate_schedule("09:02", "16:02", 9) + self.generate_schedule("19:02", "23:02", 9),
-                    "late": self.generate_schedule("23:02", "00:32", 20),
-                    "closing_time": "00:30"
-                },
-                "H2BQ": {
-                    "peak": self.generate_schedule("06:04", "09:04", 4) + self.generate_schedule("16:04", "19:04", 4),
-                    "off_peak": self.generate_schedule("09:04", "16:04", 9) + self.generate_schedule("19:04", "23:04", 9),
-                    "late": self.generate_schedule("23:04", "00:34", 20),
-                    "closing_time": "00:30"
-                },
-                "H2PV": {
-                    "peak": self.generate_schedule("06:06", "09:06", 4) + self.generate_schedule("16:06", "19:06", 4),
-                    "off_peak": self.generate_schedule("09:06", "16:06", 9) + self.generate_schedule("19:06", "23:06", 9),
-                    "late": self.generate_schedule("23:06", "00:36", 20),
-                    "closing_time": "00:30"
-                },
-                "H2LT": {
-                    "peak": self.generate_schedule("06:08", "09:08", 4) + self.generate_schedule("16:08", "19:08", 4),
-                    "off_peak": self.generate_schedule("09:08", "16:08", 9) + self.generate_schedule("19:08", "23:08", 9),
-                    "late": self.generate_schedule("23:08", "00:38", 20),
-                    "closing_time": "00:30"
-                },
-                "H2TD": {
-                    "peak": self.generate_schedule("06:10", "09:10", 4) + self.generate_schedule("16:10", "19:10", 4),
-                    "off_peak": self.generate_schedule("09:10", "16:10", 9) + self.generate_schedule("19:10", "23:10", 9),
-                    "late": self.generate_schedule("23:10", "00:40", 20),
-                    "closing_time": "00:30"
-                },
-                "H1BT": {
-                    "peak": self.generate_schedule("06:12", "09:12", 4) + self.generate_schedule("16:12", "19:12", 4),
-                    "off_peak": self.generate_schedule("09:12", "16:12", 9) + self.generate_schedule("19:12", "23:12", 9),
-                    "late": self.generate_schedule("23:12", "00:42", 20),
-                    "weekend_night": self.generate_schedule("23:12", "02:00", 20),  # Extended for weekends
-                    "closing_time": "02:00"  # Extended on weekends
-                },
-                "H2TT": {
-                    "peak": self.generate_schedule("06:14", "09:14", 4) + self.generate_schedule("16:14", "19:14", 4),
-                    "off_peak": self.generate_schedule("09:14", "16:14", 9) + self.generate_schedule("19:14", "23:14", 9),
-                    "late": self.generate_schedule("23:14", "00:44", 20),
-                    "weekend_night": self.generate_schedule("23:14", "02:00", 20),  # Extended for weekends
-                    "closing_time": "02:00"  # Extended on weekends
-                }
-            },
-            "Line 3": {
-                "H3TB": {
-                    "peak": self.generate_schedule("06:00", "09:00", 5) + self.generate_schedule("16:00", "19:00", 5),
-                    "off_peak": self.generate_schedule("09:00", "16:00", 11) + self.generate_schedule("19:00", "23:00", 11),
-                    "late": self.generate_schedule("23:00", "00:30", 25),
-                    "early_morning": self.generate_schedule("04:00", "06:00", 3),
-                    "closing_time": "00:30"
-                },
-                "H3TS": {
-                    "peak": self.generate_schedule("06:02", "09:02", 5) + self.generate_schedule("16:02", "19:02", 5),
-                    "off_peak": self.generate_schedule("09:02", "16:02", 11) + self.generate_schedule("19:02", "23:02", 11),
-                    "late": self.generate_schedule("23:02", "00:32", 25),
-                    "early_morning": self.generate_schedule("04:02", "06:02", 3),
-                    "closing_time": "00:30"
-                },
-                "H3NT": {
-                    "peak": self.generate_schedule("06:04", "09:04", 5) + self.generate_schedule("16:04", "19:04", 5),
-                    "off_peak": self.generate_schedule("09:04", "16:04", 11) + self.generate_schedule("19:04", "23:04", 11),
-                    "late": self.generate_schedule("23:04", "00:34", 25),
-                    "early_morning": self.generate_schedule("04:04", "06:04", 3),
-                    "closing_time": "00:30"
-                },
-                "H1BS": {
-                    "peak": self.generate_schedule("06:06", "09:06", 5) + self.generate_schedule("16:06", "19:06", 5),
-                    "off_peak": self.generate_schedule("09:06", "16:06", 11) + self.generate_schedule("19:06", "23:06", 11),
-                    "late": self.generate_schedule("23:06", "00:36", 25),
-                    "early_morning": self.generate_schedule("04:06", "06:06", 3),
-                    "closing_time": "00:30"
-                },
-                "H3HB": {
-                    "peak": self.generate_schedule("06:08", "09:08", 5) + self.generate_schedule("16:08", "19:08", 5),
-                    "off_peak": self.generate_schedule("09:08", "16:08", 11) + self.generate_schedule("19:08", "23:08", 11),
-                    "late": self.generate_schedule("23:08", "00:38", 25),
-                    "early_morning": self.generate_schedule("04:08", "06:08", 3),
-                    "closing_time": "00:30"
-                },
-                "H1TDU": {
-                    "peak": self.generate_schedule("06:10", "09:10", 5) + self.generate_schedule("16:10", "19:10", 5),
-                    "off_peak": self.generate_schedule("09:10", "16:10", 11) + self.generate_schedule("19:10", "23:10", 11),
-                    "late": self.generate_schedule("23:10", "00:40", 25),
-                    "early_morning": self.generate_schedule("04:10", "06:10", 3),
-                    "closing_time": "00:30"
-                },
-                "H3HP": {
-                    "peak": self.generate_schedule("06:12", "09:12", 5) + self.generate_schedule("16:12", "19:12", 5),
-                    "off_peak": self.generate_schedule("09:12", "16:12", 11) + self.generate_schedule("19:12", "23:12", 11),
-                    "early_morning": self.generate_schedule("04:12", "06:12", 3),
-                    "closing_time": "00:30"
-                }
-            },
-            "Line 4": {
-                "H4TX": {  # Outer station
-                    "peak": self.generate_schedule("06:00", "09:00", 6) + self.generate_schedule("16:00", "19:00", 6),
-                    "off_peak": self.generate_schedule("09:00", "16:00", 11) + self.generate_schedule("19:00", "22:30", 11),
-                    "closing_time": "22:30"
-                },
-                "H4NT": {  # Outer station
-                    "peak": self.generate_schedule("06:02", "09:02", 6) + self.generate_schedule("16:02", "19:02", 6),
-                    "off_peak": self.generate_schedule("09:02", "16:02", 11) + self.generate_schedule("19:02", "22:32", 11),
-                    "closing_time": "22:30"
-                },
-                "H4AL": {  # Outer station
-                    "peak": self.generate_schedule("06:04", "09:04", 6) + self.generate_schedule("16:04", "19:04", 6),
-                    "off_peak": self.generate_schedule("09:04", "16:04", 11) + self.generate_schedule("19:04", "22:34", 11),
-                    "closing_time": "22:30"
-                },
-                "H4AN": {  # Outer station
-                    "peak": self.generate_schedule("06:06", "09:06", 6) + self.generate_schedule("16:06", "19:06", 6),
-                    "off_peak": self.generate_schedule("09:06", "16:06", 11) + self.generate_schedule("19:06", "22:36", 11),
-                    "closing_time": "22:30"
-                },
-                "H4NL": {  # Outer station
-                    "peak": self.generate_schedule("06:08", "09:08", 6) + self.generate_schedule("16:08", "19:08", 6),
-                    "off_peak": self.generate_schedule("09:08", "16:08", 11) + self.generate_schedule("19:08", "22:38", 11),
-                    "closing_time": "22:30"
-                },
-                "H4GV": {
-                    "peak": self.generate_schedule("06:10", "09:10", 6) + self.generate_schedule("16:10", "19:10", 6),
-                    "off_peak": self.generate_schedule("09:10", "16:10", 11) + self.generate_schedule("19:10", "23:00", 11),
-                    "closing_time": "23:00"
-                },
-                "H4GD": {
-                    "peak": self.generate_schedule("06:12", "09:12", 6) + self.generate_schedule("16:12", "19:12", 6),
-                    "off_peak": self.generate_schedule("09:12", "16:12", 11) + self.generate_schedule("19:12", "23:00", 11),
-                    "closing_time": "23:00"
-                },
-                "H4PN": {
-                    "peak": self.generate_schedule("06:14", "09:14", 6) + self.generate_schedule("16:14", "19:14", 6),
-                    "off_peak": self.generate_schedule("09:14", "16:14", 11) + self.generate_schedule("19:14", "23:00", 11),
-                    "closing_time": "23:00"
-                },
-                "H4SB": {
-                    "peak": self.generate_schedule("06:16", "09:16", 6) + self.generate_schedule("16:16", "19:16", 6),
-                    "off_peak": self.generate_schedule("09:16", "16:16", 11) + self.generate_schedule("19:16", "23:00", 11),
-                    "closing_time": "23:00"
-                },
-                "H4D7": {
-                    "peak": self.generate_schedule("06:18", "09:18", 6) + self.generate_schedule("16:18", "19:18", 6),
-                    "off_peak": self.generate_schedule("09:18", "16:18", 11) + self.generate_schedule("19:18", "23:00", 11),
-                    "closing_time": "23:00"
-                },
-                "H4NV": {
-                    "peak": self.generate_schedule("06:20", "09:20", 6) + self.generate_schedule("16:20", "19:20", 6),
-                    "off_peak": self.generate_schedule("09:20", "16:20", 11) + self.generate_schedule("19:20", "23:00", 11),
-                    "closing_time": "23:00"
-                }
-            },
-            "Line 5": {
-                "H5CG": {
-                    "peak": self.generate_schedule("06:00", "09:00", 7) + self.generate_schedule("16:00", "19:00", 7),
-                    "off_peak": self.generate_schedule("09:00", "16:00", 13) + self.generate_schedule("19:00", "22:30", 13),
-                    "early_morning": self.generate_schedule("04:00", "06:00", 3),
-                    "closing_time": "22:30"
-                },
-                "H5BH": {
-                    "peak": self.generate_schedule("06:02", "09:02", 7) + self.generate_schedule("16:02", "19:02", 7),
-                    "off_peak": self.generate_schedule("09:02", "16:02", 13) + self.generate_schedule("19:02", "22:32", 13),
-                    "early_morning": self.generate_schedule("04:02", "06:02", 3),
-                    "closing_time": "22:30"
-                },
-                "H1BT": {
-                    "peak": self.generate_schedule("06:04", "09:04", 7) + self.generate_schedule("16:04", "19:04", 7),
-                    "off_peak": self.generate_schedule("09:04", "16:04", 13) + self.generate_schedule("19:04", "22:34", 13),
-                    "early_morning": self.generate_schedule("04:04", "06:04", 3),
-                    "closing_time": "22:30"
-                },
-                "H5TC": {
-                    "peak": self.generate_schedule("06:06", "09:06", 7) + self.generate_schedule("16:06", "19:06", 7),
-                    "off_peak": self.generate_schedule("09:06", "16:06", 13) + self.generate_schedule("19:06", "22:36", 13),
-                    "early_morning": self.generate_schedule("04:06", "06:06", 3),
-                    "closing_time": "22:30"
-                },
-                "H5SG": {
-                    "peak": self.generate_schedule("06:08", "09:08", 7) + self.generate_schedule("16:08", "19:08", 7),
-                    "off_peak": self.generate_schedule("09:08", "16:08", 13) + self.generate_schedule("19:08", "22:38", 13),
-                    "early_morning": self.generate_schedule("04:08", "06:08", 3),
-                    "closing_time": "22:30"
-                },
-                "H3TS": {
-                    "peak": self.generate_schedule("06:10", "09:10", 7) + self.generate_schedule("16:10", "19:10", 7),
-                    "off_peak": self.generate_schedule("09:10", "16:10", 13) + self.generate_schedule("19:10", "22:40", 13),
-                    "early_morning": self.generate_schedule("04:10", "06:10", 3),
-                    "closing_time": "22:30"
-                },
-                "H4D7": {
-                    "peak": self.generate_schedule("06:12", "09:12", 7) + self.generate_schedule("16:12", "19:12", 7),
-                    "off_peak": self.generate_schedule("09:12", "16:12", 13) + self.generate_schedule("19:12", "22:42", 13),
-                    "early_morning": self.generate_schedule("04:12", "06:12", 3),
-                    "closing_time": "22:30"
-                },
-                "H5TP": {
-                    "peak": self.generate_schedule("06:14", "09:14", 7) + self.generate_schedule("16:14", "19:14", 7),
-                    "off_peak": self.generate_schedule("09:14", "16:14", 13) + self.generate_schedule("19:14", "22:44", 13),
-                    "early_morning": self.generate_schedule("04:14", "06:14", 3),
-                    "closing_time": "22:30"
-                }
-            }
-        }
+    # Rest of the methods remain unchanged
+    def add_trip(self, trip, session_token):
+        conn = get_db_connection(session_token)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO trips (description) VALUES (%s)", (trip,))
+        conn.commit()
+        cursor.close()
+        release_db_connection(conn)
 
-        # Create the trips table
-        conn = get_db_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS trips (
-                    id SERIAL PRIMARY KEY,
-                    start_station VARCHAR(100),
-                    end_station VARCHAR(100),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.commit()
-        finally:
-            cursor.close()
-            release_db_connection(conn)
+    def get_trips(self, session_token):
+        conn = get_db_connection(session_token)
+        cursor = conn.cursor()
+        cursor.execute("SELECT description FROM trips")
+        trips = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        release_db_connection(conn)
+        return trips
 
-    def generate_schedule(self, start_time, end_time, interval_minutes):
-        """Generate a timetable from start_time to end_time with given interval in minutes."""
-        schedule = []
-        start = datetime.strptime(start_time, "%H:%M")
-        end = datetime.strptime(end_time, "%H:%M")
-        if end_time == "00:30":
-            end = end.replace(day=end.day + 1)
-        if end_time == "02:00":
-            end = end.replace(day=end.day + 1)
-        current = start
-        while current <= end:
-            schedule.append(current.strftime("%H:%M"))
-            current += timedelta(minutes=interval_minutes)
-        return schedule
-
-    def add_trip(self, trip):
-        """Add a trip to the database and route tree."""
-        start_station, end_station = trip.split(" to ")
-        start_id = self.station_map.get(start_station, "Unknown")
-        end_id = self.station_map.get(end_station, "Unknown")
-
-        conn = get_db_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO trips (start_station, end_station) VALUES (%s, %s)",
-                (start_id, end_id)
-            )
-            conn.commit()
-        finally:
-            cursor.close()
-            release_db_connection(conn)
-
-        if not self.route_tree:
-            self.route_tree = Node(start_id)
-        self._add_to_tree(self.route_tree, end_id)
-
-    def _add_to_tree(self, node, stop):
-        if stop < node.stop:
-            if node.left is None:
-                node.left = Node(stop)
-            else:
-                self._add_to_tree(node.left, stop)
-        else:
-            if node.right is None:
-                node.right = Node(stop)
-            else:
-                self._add_to_tree(node.right, stop)
-
-    def print_route_tree(self):
-        self._print_tree(self.route_tree)
-
-    def _print_tree(self, node):
-        if node:
-            self._print_tree(node.left)
-            print(node.stop)
-            self._print_tree(node.right)
-
-    def get_trips(self):
-        """Fetch all trips from the database."""
-        conn = get_db_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT start_station, end_station FROM trips")
-            trips = cursor.fetchall()
-            return [f"{start} to {end}" for start, end in trips]
-        finally:
-            cursor.close()
-            release_db_connection(conn)
-
-    def get_station_id(self, station):
-        return self.station_map.get(station, "Unknown")
+    def get_station_id(self, station_name):
+        return self.station_map.get(station_name, "Unknown")
 
     def find_path(self, start, end):
+        if start not in self.station_graph or end not in self.station_graph:
+            print(f"Start {start} or end {end} not in station_graph")
+            return None
         visited = set()
-        queue = deque([(start, [start])])
+        queue = [(start, [start])]
+        print(f"Starting BFS from {start} to {end}")
         while queue:
-            station, path = queue.popleft()
-            if station == end:
+            current, path = queue.pop(0)
+            print(f"Visiting {current}, Path so far: {path}")
+            if current == end:
+                print(f"Found path: {path}")
                 return path
-            if station not in visited:
-                visited.add(station)
-                for next_station in self.station_graph.get(station, []):
-                    queue.append((next_station, path + [next_station]))
+            if current not in visited:
+                visited.add(current)
+                for neighbor, line in self.station_graph[current]:
+                    if neighbor not in visited:
+                        print(f"Adding neighbor {neighbor} via {line}")
+                        queue.append((neighbor, path + [neighbor]))
+        print(f"No path found from {start} to {end}")
         return None
 
     def longest_route_no_repeats(self):
+        def dfs(current, visited):
+            longest = [current]
+            for neighbor, _ in self.station_graph.get(current, []):
+                if neighbor not in visited:
+                    new_visited = visited | {neighbor}
+                    sub_route = dfs(neighbor, new_visited)
+                    if len(sub_route) + 1 > len(longest):
+                        longest = [current] + sub_route
+            return longest
+
         longest_path = []
         for start in self.station_graph:
-            for end in self.station_graph:
-                path = self.find_path(start, end)
-                if path and len(path) > len(longest_path):
-                    seen = set()
-                    repeat = False
-                    for station in path:
-                        if station in seen:
-                            repeat = True
-                            break
-                        seen.add(station)
-                    if not repeat:
-                        longest_path = path
+            path = dfs(start, {start})
+            if len(path) > len(longest_path):
+                longest_path = path
         return longest_path
 
-    def get_timetable(self, line, station, current_time=None):
-        if current_time is None:
-            current_time = datetime.now()
-
-        current_time_str = current_time.strftime("%H:%M")
-        current_hour = int(current_time_str.split(":")[0])
-        current_minute = int(current_time_str.split(":")[1])
-        day_of_week = current_time.weekday()  # 0 = Monday, 4 = Friday, 5 = Saturday
-
-        station_id = self.station_map.get(station, "Unknown")
-        if line not in self.timetable or station_id not in self.timetable[line]:
+    def get_timetable(self, line, station, current_time):
+        if line not in self.valid_lines:
             return []
+        hour = current_time.hour
+        if hour < 6 or hour >= 22:
+            return ["Station closed!"]
+        is_peak = (7 <= hour < 9) or (17 <= hour < 19)
+        frequency = 10 if is_peak else 15
+        start_hour = 6
+        times = []
+        for minute in range(0, 60, frequency):
+            time = current_time.replace(hour=start_hour, minute=minute, second=0, microsecond=0)
+            while time <= current_time.replace(hour=22, minute=0, second=0, microsecond=0):
+                if time >= current_time:
+                    times.append(time.strftime("%H:%M"))
+                time += timedelta(minutes=frequency)
+            if times:
+                break
+        return times if times else []
 
-        timetable_data = self.timetable[line][station_id]
-        closing_time = timetable_data["closing_time"]
+    def get_next_departure(self, line, station, current_time):
+        timetable = self.get_timetable(line, station, current_time)
+        if timetable == ["Station closed!"] or not timetable:
+            return None
+        for time_str in timetable:
+            dep_time = datetime.strptime(f"{current_time.date()} {time_str}", "%Y-%m-%d %H:%M")
+            if dep_time >= current_time:
+                return dep_time
+        return None
 
-        # Check if the station is closed
-        closing_hour, closing_minute = map(int, closing_time.split(":"))
-        if closing_time == "02:00" and (day_of_week == 4 or day_of_week == 5):  # Friday or Saturday
-            if current_hour > 2 or (current_hour == 2 and current_minute > 0):
-                return ["Station closed!"]
-        else:
-            if (current_hour > closing_hour) or (current_hour == closing_hour and current_minute > closing_minute):
-                return ["Station closed!"]
+    def find_fastest_path(self, start, end, start_time):
+        start_id = self.get_station_id(start)
+        end_id = self.get_station_id(end)
+        if start_id not in self.station_graph or end_id not in self.station_graph:
+            return None
 
-        # Special case: Airport route (Lines 3 & 5) from 4:00 AM to 6:00 AM
-        if line in ["Line 3", "Line 5"] and station_id in ["H3TS", "H5SG"] and 4 <= current_hour < 6:
-            return timetable_data.get("early_morning", [])
+        pq = [(start_time, start_id, [start])]
+        earliest = {start_id: start_time}
 
-        # Special case: Weekend nightlife on Line 2 (Ben Thanh ↔ Thu Thiem)
-        if line == "Line 2" and station_id in ["H1BT", "H2TT"] and (day_of_week == 4 or day_of_week == 5) and (current_hour >= 23 or current_hour < 2):
-            return timetable_data.get("weekend_night", timetable_data["late"])
+        while pq:
+            current_time, current_station, path = heapq.heappop(pq)
+            if current_station == end_id:
+                total_time = (current_time - start_time).total_seconds() / 60
+                return path, total_time
 
-        # Express service on Line 1 during peak hours
-        if line == "Line 1" and station_id in ["H1BT", "H1BS", "H1TD", "H1ST", "H1TDU"] and ((6 <= current_hour < 9) or (16 <= current_hour < 19)):
-            return timetable_data.get("express", timetable_data["peak"])
+            if current_time > earliest.get(current_station, datetime.max):
+                continue
 
-        # Regular timetable selection
-        if (6 <= current_hour < 9) or (16 <= current_hour < 19):
-            return timetable_data["peak"]
-        elif (9 <= current_hour < 16) or (19 <= current_hour < 23):
-            return timetable_data["off_peak"]
-        elif 23 <= current_hour or current_hour < 2:
-            return timetable_data.get("late", [])
-        else:
-            return []
+            for neighbor, line in self.station_graph[current_station]:
+                dep_time = self.get_next_departure(line, current_station, current_time)
+                if dep_time is None:
+                    continue
+                travel_time = timedelta(minutes=3)  # Fixed travel time per segment
+                arr_time = dep_time + travel_time
+
+                if arr_time < earliest.get(neighbor, datetime.max):
+                    earliest[neighbor] = arr_time
+                    new_path = path + [self.station_map_inverse()[neighbor]]
+                    heapq.heappush(pq, (arr_time, neighbor, new_path))
+
+        return None
+
+    def station_map_inverse(self):
+        return {v: k for k, v in self.station_map.items()}

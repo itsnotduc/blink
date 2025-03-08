@@ -2,7 +2,7 @@
 from fastapi import FastAPI, HTTPException
 from datetime import datetime
 from trip_manager import TripManager
-from db import close_db_pool
+from db import close_db_pool, create_session, get_active_connections, get_max_connections, get_all_sessions, get_session_role, ADMIN_USERNAME, ADMIN_PASSWORD, validate_session, session_store
 
 app = FastAPI(title="Blink Backend API", description="API for managing trips on the HCMC Metro")
 
@@ -21,18 +21,32 @@ async def shutdown_event():
 async def root():
     return {"message": "Blink backend live, fam!"}
 
+@app.get("/login")
+async def login():
+    """Generate a new session token for a regular user."""
+    session_token = create_session(role="user")
+    return {"session_token": session_token}
+
+@app.post("/admin/login")
+async def admin_login(username: str, password: str):
+    """Generate a new session token for an admin user."""
+    if username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    session_token = create_session(role="admin")
+    return {"session_token": session_token}
+
 @app.post("/trips/add/")
-async def add_trip(trip: str):
+async def add_trip(trip: str, session_token: str):
     try:
-        trip_manager.add_trip(trip)
+        trip_manager.add_trip(trip, session_token)
         return {"message": f"Trip '{trip}' added successfully"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error adding trip: {str(e)}")
 
 @app.get("/trips/")
-async def get_trips():
+async def get_trips(session_token: str):
     try:
-        trips = trip_manager.get_trips()
+        trips = trip_manager.get_trips(session_token)
         return {"trips": trips}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving trips: {str(e)}")
@@ -63,16 +77,14 @@ async def find_express_route(start: str, end: str):
     if start_id == "Unknown" or end_id == "Unknown":
         raise HTTPException(status_code=404, detail="One or both stations not found")
 
-    # Express routes on Line 1: Ben Thanh ↔ Thu Duc, Ben Thanh ↔ Suoi Tien
-    express_stations = {"H1BT", "H1BS", "H1TD", "H1ST", "H1TDU"}
+    express_stations = {"S014BT", "S012BS", "S009TD", "S002STAP", "S004TDU"}  # Updated codes
     if start_id not in express_stations or end_id not in express_stations:
-        raise HTTPException(status_code=400, detail="Express routes only available between Ben Thanh, Ba Son, Thao Dien, Thu Duc, and Suoi Tien")
+        raise HTTPException(status_code=400, detail="Express routes only available between Ben Thanh, Ba Son, Thao Dien, Suoi Tien Amusement Park, and Thu Duc")
 
     path = trip_manager.find_path(start_id, end_id)
     if path is None:
         raise HTTPException(status_code=404, detail=f"No express route found from {start} to {end}")
 
-    # Filter path to include only express stations
     express_path = [station for station in path if station in express_stations]
     return {"start": start, "end": end, "express_path": express_path}
 
@@ -89,10 +101,9 @@ async def get_timetable(line: str, station: str, current_time: str = None):
         if not timetable:
             raise HTTPException(status_code=404, detail=f"No timetable found for {station} on {line}")
 
-        # Determine the type of service (regular or express)
         service_type = "regular"
         current_hour = current_time.hour if current_time else datetime.now().hour
-        if line == "Line 1" and station in ["Ben Thanh", "Ba Son", "Thao Dien", "Suoi Tien", "Thu Duc"] and ((6 <= current_hour < 9) or (16 <= current_hour < 19)):
+        if line == "Line 1" and station in ["Ben Thanh", "Ba Son", "Thao Dien", "Suoi Tien Amusement Park", "Thu Duc"] and ((6 <= current_hour < 9) or (16 <= current_hour < 19)):
             service_type = "express"
 
         return {"line": line, "station": station, "timetable": timetable, "service_type": service_type}
@@ -108,3 +119,31 @@ async def get_longest_route():
         return {"longest_route": longest_route}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error finding longest route: {str(e)}")
+
+@app.get("/pool_status/")
+async def get_pool_status(session_token: str):
+    """Return the current status of the connection pool (admin-only)."""
+    if not validate_session(session_token, required_role="admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return {
+        "active_connections": get_active_connections(),
+        "max_connections": get_max_connections()
+    }
+
+@app.get("/sessions/")
+async def get_sessions(session_token: str):
+    """Return all active sessions (admin-only)."""
+    if not validate_session(session_token, required_role="admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    sessions = get_all_sessions()
+    return {"sessions": sessions}
+
+@app.post("/sessions/invalidate/")
+async def invalidate_session(session_token: str, target_session_token: str):
+    """Invalidate a specific session (admin-only)."""
+    if not validate_session(session_token, required_role="admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if target_session_token in session_store:
+        del session_store[target_session_token]
+        return {"message": f"Session {target_session_token} invalidated successfully"}
+    raise HTTPException(status_code=404, detail="Session not found")
