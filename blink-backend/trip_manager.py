@@ -1,12 +1,15 @@
+from collections import defaultdict
 import heapq
 from datetime import datetime, timedelta
 from db import get_db_connection, release_db_connection
 
 class TripManager:
+    TRAVEL_TIME = 3  # Time between consecutive stations on the same line (minutes)
+    TRANSFER_TIME = 5  # Time to transfer between lines at the same station (minutes)
+
     def __init__(self):
-        # Updated station_map with station names and IDs
+        # Station map with station names to IDs
         self.station_map = {
-            # Line 1
             "Mien Dong": "S101MD",
             "Suoi Tien Amusement Park": "S102STAP",
             "Saigon Hi-tech Park": "S103SHTP",
@@ -15,148 +18,107 @@ class TripManager:
             "Phuoc Long": "S106PL",
             "Rach Chiec": "S107RC",
             "Anphu": "S108AP",
-            "Thao Dien": "S109TD",  # Connects to MR2
-            "Saigon Bridge": "S110SB",  # Connects to Line 5
+            "Thao Dien": "S109TD",
+            "Saigon Bridge": "S110SB",
             "Van Thanh": "S111VT",
             "Ba Son": "S112BS",
             "Opera House": "S113OH",
-            "Ben Thanh": "S114BT",  # Connects to Lines 2, 3A, 4
-
-            # Line 2
+            "Ben Thanh": "S114BT",
             "Cu Chi": "S201CC",
             "An Suong": "S202AS",
             "Tan Thoi Nhat": "S203TTN",
             "Tan Binh": "S204TB",
             "Pham Van Bach": "S205PVB",
-            "Ba Queo": "S206BQ",  # Connects to Line 6
+            "Ba Queo": "S206BQ",
             "Nguyen Hong Dao": "S207NHD",
-            "Bay Hien": "S208BH",  # Connects to Line 5
+            "Bay Hien": "S208BH",
             "Pham Van Hai": "S209PVH",
             "Le Thi Rieng Park": "S210LTRP",
             "Hoa Hung": "S211HH",
             "Dan Chu": "S212DC",
-            "Tao Dan": "S213TD",  # Connects to Line 3B
-            # "Ben Thanh": "S114BT",  # Already defined, connects to Lines 1, 3A, 4
+            "Tao Dan": "S213TD",
             "Ham Nghi": "S214HN",
             "Thu Thiem Square": "S215TTS",
             "Mai Chi Tho": "S216MCT",
-            "Tran Nao": "S217TN",  # Connects to MR2
+            "Tran Nao": "S217TN",
             "Binh Khanh": "S218BK",
             "Thu Thiem": "S219TT",
-
-            # Line 3A
             "Tan Kien": "S301TK",
             "Eastern Bus Station": "S302EBS",
             "Phu Lam Park": "S303PLP",
-            "Phu Lam": "S304PL",  # Connects to Line 6
+            "Phu Lam": "S304PL",
             "Cay Go": "S305CG",
             "Cho Lon": "S306CL",
             "Thuan Kieu Plaza": "S307TKP",
-            "University of Meds and Pharma": "S308UMP",  # Connects to Line 5
+            "University of Meds and Pharma": "S308UMP",
             "Hoa Binh Park": "S309HBP",
             "Cong Hoa": "S310CH",
             "Thai Binh": "S311TB",
-            # "Ben Thanh": "S114BT",  # Already defined, connects to Lines 1, 2, 4
-
-            # Line 3B
             "Di An": "S351DA",
             "Ga An Binh": "S352GAB",
             "Tam Binh": "S353TB",
             "Hiep Binh Phuoc": "S354HBP",
             "Binh Trieu": "S355BT",
             "Xo Viet Nghe Tinh": "S356XVNT",
-            "Hang Xanh": "S357HX",  # Connects to Line 5
+            "Hang Xanh": "S357HX",
             "Nguyen Cuu Van": "S358NCV",
             "Saigon Zoo": "S359SZ",
             "Hoa Lu": "S360HL",
-            "Turtle Lake": "S361TL",  # Connects to Line 4
+            "Turtle Lake": "S361TL",
             "Independence Palace": "S362IP",
-            # "Tao Dan": "S213TD",  # Already defined, connects to Line 2
-            # "Cong Hoa": "S310CH",  # Already defined, connects to Line 3A
-
-            # Line 4
             "Thanh Xuan": "S401TX",
             "Nga Tu Ga": "S402NTG",
             "An Loc Bridge": "S403ALB",
             "An Nhon": "S404AN",
             "Nguyen Van Luong": "S405NVL",
-            "Go Vap": "S406GV",  # Connects to MR3
+            "Go Vap": "S406GV",
             "175 Hospital": "S407175H",
-            "Gia Dinh Park": "S408GDP",  # Connects to Line 4B
-            "Phu Nhuan": "S409PN",  # Connects to Line 5
+            "Gia Dinh Park": "S408GDP",
+            "Phu Nhuan": "S409PN",
             "Kieu Bridge": "S410KB",
             "Le Van Tam Park": "S411LVTP",
-            # "Turtle Lake": "S361TL",  # Already defined, connects to Line 3B
-            # "Ben Thanh": "S114BT",  # Already defined, connects to Lines 1, 2, 3A
             "Ong Lanh Bridge": "S412OLB",
             "Yersin": "S413YS",
             "Khanh Hoa": "S414KH",
             "Tan Hung": "S415TH",
             "Nguyen Huu Tho": "S416NHT",
-            "Nguyen Van Linh": "S417NVL",  # Connects to MR2
+            "Nguyen Van Linh": "S417NVL",
             "Phuoc Kien": "S418PK",
             "Pham Huu Lau": "S419PHL",
             "Ba Chiem": "S420BC",
             "Long Thoi": "S421LT",
             "Hiep Phuoc": "S422HP",
-
-            # Line 4B
-            # "Gia Dinh Park": "S408GDP",  # Already defined, connects to Line 4
-            "Tan Son Nhat": "S451TSN",  # Connects to Line 4B1
-            "Lang Cha Ca": "S452LCC",  # Connects to Line 5
-
-            # Line 4B1
-            # "Tan Son Nhat": "S451TSN",  # Already defined, connects to Line 4B
-            "Hoang Van Thu Park": "S461HVTP",  # Connects to Line 5
-
-            # Line 5
-            # "Saigon Bridge": "S110SB",  # Already defined, connects to Line 1
-            # "Hang Xanh": "S357HX",  # Already defined, connects to Line 3B
+            "Tan Son Nhat": "S451TSN",
+            "Lang Cha Ca": "S452LCC",
+            "Hoang Van Thu Park": "S461HVTP",
             "Ba Chieu": "S501BC",
             "Nguyen Van Dau": "S502NVD",
-            # "Phu Nhuan": "S409PN",  # Already defined, connects to Line 4
-            # "Hoang Van Thu Park": "S461HVTP",  # Already defined, connects to Line 4B1
-            # "Lang Cha Ca": "S452LCC",  # Already defined, connects to Line 4B
-            # "Bay Hien": "S208BH",  # Already defined, connects to Line 2
             "Tan Binh Market": "S503TBM",
             "Bac Hai": "S504BH",
             "HCMC Uni of Tech": "S505HUT",
             "Phu Tho": "S506PT",
-            # "Uni of Meds and Pharma": "S308UMP",  # Already defined, connects to Line 3A
             "Xom Cui": "S507XC",
             "District 8 Bus Station": "S508D8BS",
-            "Binh Hung": "S509BH",  # Connects to MR2
+            "Binh Hung": "S509BH",
             "Can Giuoc": "S510CG",
-
-            # Line 6
-            # "Ba Queo": "S206BQ",  # Already defined, connects to Line 2
             "Au Co": "S601AC",
             "Vuon Lai": "S602VL",
             "Tan Phu": "S603TP",
             "Hoa Binh": "S604HB",
             "Luy Ban Bich": "S605LBB",
-            # "Phu Lam": "S304PL",  # Already defined, connects to Line 3A
-
-            # Monorail MR2
             "Thanh Da": "M201TD",
-            # "Thao Dien": "S109TD",  # Already defined, connects to Line 1
             "Binh An": "M202BA",
             "Luong Dinh Cua": "M203LDC",
-            # "Tran Nao": "S217TN",  # Already defined, connects to Line 2
             "South Thu Thiem": "M204STT",
             "Huynh Tan Phat": "M205HTP",
             "Tan Thuan Tay": "M206TTT",
             "Nguyen Thi Thap": "M207NTT",
             "Phu My Hung": "M208PMH",
             "Nguyen Duc Canh": "M209NDC",
-            # "Nguyen Van Linh": "S417NVL",  # Already defined, connects to Line 4
             "RMIT": "M210RMIT",
             "Cau Ong Be": "M211COB",
             "Pham Hung": "M212PH",
             "Rach Hiep An": "M213RHA",
-            # "Binh Hung": "S509BH",  # Already defined, connects to Line 5
-
-            # Monorail MR3
             "Tan Chanh Hiep": "M301TCH",
             "Quang Trung Software City": "M302QTSC",
             "Phan Huy Ich": "M303PHI",
@@ -164,177 +126,152 @@ class TripManager:
             "Hanh Thong Tay": "M305HTT",
             "Thong Nhat": "M306TN",
             "Xom Thuoc": "M307XT",
-            # "Go Vap": "S406GV",  # Already defined, connects to Line 4
         }
 
-        # Updated station_graph with connections
-        self.station_graph = {
-            # Line 1
-            "S101MD": [("S102STAP", "Line 1")],
-            "S102STAP": [("S101MD", "Line 1"), ("S103SHTP", "Line 1")],
-            "S103SHTP": [("S102STAP", "Line 1"), ("S104TD", "Line 1")],
-            "S104TD": [("S103SHTP", "Line 1"), ("S105BT", "Line 1")],
-            "S105BT": [("S104TD", "Line 1"), ("S106PL", "Line 1")],
-            "S106PL": [("S105BT", "Line 1"), ("S107RC", "Line 1")],
-            "S107RC": [("S106PL", "Line 1"), ("S108AP", "Line 1")],
-            "S108AP": [("S107RC", "Line 1"), ("S109TD", "Line 1")],
-            "S109TD": [("S108AP", "Line 1"), ("M201TD", "MR2")],  # Connects to MR2
-            "S110SB": [("S109TD", "Line 1"), ("S357HX", "Line 5")],  # Connects to Line 5
-            "S111VT": [("S110SB", "Line 1"), ("S112BS", "Line 1")],
-            "S112BS": [("S111VT", "Line 1"), ("S113OH", "Line 1")],
-            "S113OH": [("S112BS", "Line 1"), ("S114BT", "Line 1")],
-            "S114BT": [("S113OH", "Line 1"), ("S214HN", "Line 2"), ("S311TB", "Line 3A"), ("S412OLB", "Line 4")],  # Connects to Lines 2, 3A, 4
+        # Define line sequences
+        line1 = ["S101MD", "S102STAP", "S103SHTP", "S104TD", "S105BT", "S106PL", "S107RC",
+                 "S108AP", "S109TD", "S110SB", "S111VT", "S112BS", "S113OH", "S114BT"]
+        line2 = ["S201CC", "S202AS", "S203TTN", "S204TB", "S205PVB", "S206BQ", "S207NHD",
+                 "S208BH", "S209PVH", "S210LTRP", "S211HH", "S212DC", "S213TD", "S114BT",
+                 "S214HN", "S215TTS", "S216MCT", "S217TN", "S218BK", "S219TT"]
+        line3a = ["S301TK", "S302EBS", "S303PLP", "S304PL", "S305CG", "S306CL", "S307TKP",
+                  "S308UMP", "S309HBP", "S310CH", "S311TB", "S114BT"]
+        line3b = ["S351DA", "S352GAB", "S353TB", "S354HBP", "S355BT", "S356XVNT", "S357HX",
+                  "S358NCV", "S359SZ", "S360HL", "S361TL", "S362IP", "S213TD", "S310CH"]
+        line4 = ["S401TX", "S402NTG", "S403ALB", "S404AN", "S405NVL", "S406GV", "S407175H",
+                 "S408GDP", "S409PN", "S410KB", "S411LVTP", "S361TL", "S114BT", "S412OLB",
+                 "S413YS", "S414KH", "S415TH", "S416NHT", "S417NVL", "S418PK", "S419PHL",
+                 "S420BC", "S421LT", "S422HP"]
+        line4b = ["S408GDP", "S451TSN", "S452LCC"]
+        line4b1 = ["S451TSN", "S461HVTP"]
+        line5 = ["S110SB", "S357HX", "S501BC", "S502NVD", "S409PN", "S461HVTP", "S452LCC",
+                 "S208BH", "S503TBM", "S504BH", "S505HUT", "S506PT", "S308UMP", "S507XC",
+                 "S508D8BS", "S509BH", "S510CG"]
+        line6 = ["S206BQ", "S601AC", "S602VL", "S603TP", "S604HB", "S605LBB", "S304PL"]
+        mr2 = ["M201TD", "S109TD", "M202BA", "M203LDC", "S217TN", "M204STT", "M205HTP",
+               "M206TTT", "M207NTT", "M208PMH", "M209NDC", "S417NVL", "M210RMIT", "M211COB",
+               "M212PH", "M213RHA", "S509BH"]
+        mr3 = ["M301TCH", "M302QTSC", "M303PHI", "M304TS", "M305HTT", "M306TN", "M307XT",
+               "S406GV"]
 
-            # Line 2
-            "S201CC": [("S202AS", "Line 2")],
-            "S202AS": [("S201CC", "Line 2"), ("S203TTN", "Line 2")],
-            "S203TTN": [("S202AS", "Line 2"), ("S204TB", "Line 2")],
-            "S204TB": [("S203TTN", "Line 2"), ("S205PVB", "Line 2")],
-            "S205PVB": [("S204TB", "Line 2"), ("S206BQ", "Line 2")],
-            "S206BQ": [("S205PVB", "Line 2"), ("S601AC", "Line 6")],  # Connects to Line 6
-            "S207NHD": [("S206BQ", "Line 2"), ("S208BH", "Line 2")],
-            "S208BH": [("S207NHD", "Line 2"), ("S502NVD", "Line 5")],  # Connects to Line 5
-            "S209PVH": [("S208BH", "Line 2"), ("S210LTRP", "Line 2")],
-            "S210LTRP": [("S209PVH", "Line 2"), ("S211HH", "Line 2")],
-            "S211HH": [("S210LTRP", "Line 2"), ("S212DC", "Line 2")],
-            "S212DC": [("S211HH", "Line 2"), ("S213TD", "Line 2")],
-            "S213TD": [("S212DC", "Line 2"), ("S362IP", "Line 3B")],  # Connects to Line 3B
-            "S114BT": [("S113OH", "Line 1"), ("S214HN", "Line 2"), ("S311TB", "Line 3A"), ("S412OLB", "Line 4")],
-            "S214HN": [("S114BT", "Line 2"), ("S215TTS", "Line 2")],
-            "S215TTS": [("S214HN", "Line 2"), ("S216MCT", "Line 2")],
-            "S216MCT": [("S215TTS", "Line 2"), ("S217TN", "Line 2")],
-            "S217TN": [("S216MCT", "Line 2"), ("S218BK", "Line 2"), ("M203LDC", "MR2")],  # Fixed here
-            "S218BK": [("S217TN", "Line 2"), ("S219TT", "Line 2")],
-            "S219TT": [("S218BK", "Line 2")],
-
-            # Line 3A
-            "S301TK": [("S302EBS", "Line 3A")],
-            "S302EBS": [("S301TK", "Line 3A"), ("S303PLP", "Line 3A")],
-            "S303PLP": [("S302EBS", "Line 3A"), ("S304PL", "Line 3A")],
-            "S304PL": [("S303PLP", "Line 3A"), ("S605LBB", "Line 6")],  # Connects to Line 6
-            "S305CG": [("S304PL", "Line 3A"), ("S306CL", "Line 3A")],
-            "S306CL": [("S305CG", "Line 3A"), ("S307TKP", "Line 3A")],
-            "S307TKP": [("S306CL", "Line 3A"), ("S308UMP", "Line 3A")],
-            "S308UMP": [("S307TKP", "Line 3A"), ("S506PT", "Line 5")],  # Connects to Line 5
-            "S309HBP": [("S308UMP", "Line 3A"), ("S310CH", "Line 3A")],
-            "S310CH": [("S309HBP", "Line 3A"), ("S362IP", "Line 3B")],  # Connects to Line 3B
-            "S311TB": [("S310CH", "Line 3A"), ("S114BT", "Line 3A")],
-            # "S114BT": Already defined
-
-            # Line 3B
-            "S351DA": [("S352GAB", "Line 3B")],
-            "S352GAB": [("S351DA", "Line 3B"), ("S353TB", "Line 3B")],
-            "S353TB": [("S352GAB", "Line 3B"), ("S354HBP", "Line 3B")],
-            "S354HBP": [("S353TB", "Line 3B"), ("S355BT", "Line 3B")],
-            "S355BT": [("S354HBP", "Line 3B"), ("S356XVNT", "Line 3B")],
-            "S356XVNT": [("S355BT", "Line 3B"), ("S357HX", "Line 3B")],
-            "S357HX": [("S356XVNT", "Line 3B"), ("S110SB", "Line 5")],  # Connects to Line 5
-            "S358NCV": [("S357HX", "Line 3B"), ("S359SZ", "Line 3B")],
-            "S359SZ": [("S358NCV", "Line 3B"), ("S360HL", "Line 3B")],
-            "S360HL": [("S359SZ", "Line 3B"), ("S361TL", "Line 3B")],
-            "S361TL": [("S360HL", "Line 3B"), ("S411LVTP", "Line 4")],  # Connects to Line 4
-            "S362IP": [("S361TL", "Line 3B"), ("S213TD", "Line 2"), ("S310CH", "Line 3A")],  # Connects to Lines 2, 3A
-            # "S213TD": Already defined
-            # "S310CH": Already defined
-
-            # Line 4
-            "S401TX": [("S402NTG", "Line 4")],
-            "S402NTG": [("S401TX", "Line 4"), ("S403ALB", "Line 4")],
-            "S403ALB": [("S402NTG", "Line 4"), ("S404AN", "Line 4")],
-            "S404AN": [("S403ALB", "Line 4"), ("S405NVL", "Line 4")],
-            "S405NVL": [("S404AN", "Line 4"), ("S406GV", "Line 4")],
-            "S406GV": [("S405NVL", "Line 4"), ("M307XT", "MR3")],  # Connects to MR3
-            "S407175H": [("S406GV", "Line 4"), ("S408GDP", "Line 4")],
-            "S408GDP": [("S407175H", "Line 4"), ("S451TSN", "Line 4B")],  # Connects to Line 4B
-            "S409PN": [("S408GDP", "Line 4"), ("S502NVD", "Line 5")],  # Connects to Line 5
-            "S410KB": [("S409PN", "Line 4"), ("S411LVTP", "Line 4")],
-            "S411LVTP": [("S410KB", "Line 4"), ("S361TL", "Line 4")],  # Connects to Line 3B
-            # "S361TL": Already defined
-            # "S114BT": Already defined
-            "S412OLB": [("S114BT", "Line 4"), ("S413YS", "Line 4")],
-            "S413YS": [("S412OLB", "Line 4"), ("S414KH", "Line 4")],
-            "S414KH": [("S413YS", "Line 4"), ("S415TH", "Line 4")],
-            "S415TH": [("S414KH", "Line 4"), ("S416NHT", "Line 4")],
-            "S416NHT": [("S415TH", "Line 4"), ("S417NVL", "Line 4")],
-            "S417NVL": [("S416NHT", "Line 4"), ("M209NDC", "MR2")],  # Connects to MR2
-            "S418PK": [("S417NVL", "Line 4"), ("S419PHL", "Line 4")],
-            "S419PHL": [("S418PK", "Line 4"), ("S420BC", "Line 4")],
-            "S420BC": [("S419PHL", "Line 4"), ("S421LT", "Line 4")],
-            "S421LT": [("S420BC", "Line 4"), ("S422HP", "Line 4")],
-            "S422HP": [("S421LT", "Line 4")],
-
-            # Line 4B
-            # "S408GDP": Already defined
-            "S451TSN": [("S408GDP", "Line 4B"), ("S461HVTP", "Line 4B1")],  # Connects to Line 4B1
-            "S452LCC": [("S451TSN", "Line 4B"), ("S461HVTP", "Line 5")],  # Connects to Line 5
-
-            # Line 4B1
-            # "S451TSN": Already defined
-            "S461HVTP": [("S451TSN", "Line 4B1"), ("S409PN", "Line 5")],  # Connects to Line 5
-
-            # Line 5
-            # "S110SB": Already defined
-            # "S357HX": Already defined
-            "S501BC": [("S357HX", "Line 5"), ("S502NVD", "Line 5")],
-            "S502NVD": [("S501BC", "Line 5"), ("S409PN", "Line 5")],
-            # "S409PN": Already defined
-            # "S461HVTP": Already defined
-            # "S452LCC": Already defined
-            # "S208BH": Already defined
-            "S503TBM": [("S208BH", "Line 5"), ("S504BH", "Line 5")],
-            "S504BH": [("S503TBM", "Line 5"), ("S505HUT", "Line 5")],
-            "S505HUT": [("S504BH", "Line 5"), ("S506PT", "Line 5")],
-            "S506PT": [("S505HUT", "Line 5"), ("S308UMP", "Line 5")],
-            # "S308UMP": Already defined
-            "S507XC": [("S308UMP", "Line 5"), ("S508D8BS", "Line 5")],
-            "S508D8BS": [("S507XC", "Line 5"), ("S509BH", "Line 5")],
-            "S509BH": [("S508D8BS", "Line 5"), ("M213RHA", "MR2")],  # Connects to MR2
-            "S510CG": [("S509BH", "Line 5")],
-
-            # Line 6
-            # "S206BQ": Already defined
-            "S601AC": [("S206BQ", "Line 6"), ("S602VL", "Line 6")],
-            "S602VL": [("S601AC", "Line 6"), ("S603TP", "Line 6")],
-            "S603TP": [("S602VL", "Line 6"), ("S604HB", "Line 6")],
-            "S604HB": [("S603TP", "Line 6"), ("S605LBB", "Line 6")],
-            "S605LBB": [("S604HB", "Line 6"), ("S304PL", "Line 6")],
-            # "S304PL": Already defined
-
-            # Monorail MR2
-            "M201TD": [("S109TD", "MR2"), ("M202BA", "MR2")],
-            "M202BA": [("M201TD", "MR2"), ("M203LDC", "MR2")],
-            "M203LDC": [("M202BA", "MR2"), ("S217TN", "MR2")],
-            # "S217TN": Already defined
-            "M204STT": [("S217TN", "MR2"), ("M205HTP", "MR2")],
-            "M205HTP": [("M204STT", "MR2"), ("M206TTT", "MR2")],
-            "M206TTT": [("M205HTP", "MR2"), ("M207NTT", "MR2")],
-            "M207NTT": [("M206TTT", "MR2"), ("M208PMH", "MR2")],
-            "M208PMH": [("M207NTT", "MR2"), ("M209NDC", "MR2")],
-            "M209NDC": [("M208PMH", "MR2"), ("S417NVL", "MR2")],
-            # "S417NVL": Already defined
-            "M210RMIT": [("S417NVL", "MR2"), ("M211COB", "MR2")],
-            "M211COB": [("M210RMIT", "MR2"), ("M212PH", "MR2")],
-            "M212PH": [("M211COB", "MR2"), ("M213RHA", "MR2")],
-            "M213RHA": [("M212PH", "MR2"), ("S509BH", "MR2")],
-            # "S509BH": Already defined
-
-            # Monorail MR3
-            "M301TCH": [("M302QTSC", "MR3")],
-            "M302QTSC": [("M301TCH", "MR3"), ("M303PHI", "MR3")],
-            "M303PHI": [("M302QTSC", "MR3"), ("M304TS", "MR3")],
-            "M304TS": [("M303PHI", "MR3"), ("M305HTT", "MR3")],
-            "M305HTT": [("M304TS", "MR3"), ("M306TN", "MR3")],
-            "M306TN": [("M305HTT", "MR3"), ("M307XT", "MR3")],
-            "M307XT": [("M306TN", "MR3"), ("S406GV", "MR3")],
-            # "S406GV": Already defined
+        # Dictionary of all lines
+        lines = {
+            "Line 1": line1,
+            "Line 2": line2,
+            "Line 3A": line3a,
+            "Line 3B": line3b,
+            "Line 4": line4,
+            "Line 4B": line4b,
+            "Line 4B1": line4b1,
+            "Line 5": line5,
+            "Line 6": line6,
+            "MR2": mr2,
+            "MR3": mr3
         }
 
-        # Updated valid_lines
-        self.valid_lines = {"Line 1", "Line 2", "Line 3A", "Line 3B", "Line 4", "Line 4B", "Line 4B1", "Line 5", "Line 6", "MR2", "MR3"}
+        # Build station_graph
+        self.station_graph = defaultdict(list)
+        for line_name, stations in lines.items():
+            for i in range(len(stations) - 1):
+                self.station_graph[stations[i]].append((stations[i + 1], line_name))
+                self.station_graph[stations[i + 1]].append((stations[i], line_name))
+
+        # Add transfer connections explicitly (e.g., S114BT connects to multiple lines)
+        transfer_stations = {
+            "S114BT": ["Line 1", "Line 2", "Line 3A", "Line 4"],  # Ben Thanh
+            "S109TD": ["Line 1", "MR2"],  # Thao Dien
+            "S110SB": ["Line 1", "Line 5"],  # Saigon Bridge
+            "S208BH": ["Line 2", "Line 5"],  # Bay Hien
+            "S357HX": ["Line 3B", "Line 5"],  # Hang Xanh
+            "S409PN": ["Line 4", "Line 5"],  # Phu Nhuan
+            "S461HVTP": ["Line 4B1", "Line 5"],  # Hoang Van Thu Park
+            "S452LCC": ["Line 4B", "Line 5"],  # Lang Cha Ca
+            "S308UMP": ["Line 3A", "Line 5"],  # University of Meds and Pharma
+            "S361TL": ["Line 3B", "Line 4"],  # Turtle Lake
+            "S213TD": ["Line 2", "Line 3B"],  # Tao Dan
+            "S310CH": ["Line 3A", "Line 3B"],  # Cong Hoa
+            "S417NVL": ["Line 4", "MR2"],  # Nguyen Van Linh
+            "S509BH": ["Line 5", "MR2"],  # Binh Hung
+            "S406GV": ["Line 4", "MR3"],  # Go Vap
+            "S304PL": ["Line 3A", "Line 6"],  # Phu Lam
+            "S206BQ": ["Line 2", "Line 6"],  # Ba Queo
+            "S217TN": ["Line 2", "MR2"],  # Tran Nao
+        }
+        for station, lines_at_station in transfer_stations.items():
+            for line1 in lines_at_station:
+                for line2 in lines_at_station:
+                    if line1 != line2:
+                        self.station_graph[station].append((station, line2))
+
+        self.valid_lines = {"Line 1", "Line 2", "Line 3A", "Line 3B", "Line 4", "Line 4B",
+                            "Line 4B1", "Line 5", "Line 6", "MR2", "MR3"}
         self.route_tree = None
+        self.station_map_inv = {v: k for k, v in self.station_map.items()}
+        self.build_weighted_graph()
+    def build_weighted_graph(self):
+        """
+        Constructs a weighted graph where nodes are (station_id, line) tuples.
+        - Travel edges: between consecutive stations on the same line (weight = TRAVEL_TIME).
+        - Transfer edges: between different lines at the same station (weight = TRANSFER_TIME).
+        """
+        self.lines_per_station = defaultdict(set)
+        for station in self.station_graph:
+            for neighbor, line in self.station_graph[station]:
+                self.lines_per_station[station].add(line)
 
-    # Rest of the methods remain unchanged
+        self.weighted_graph = {}
+        for station in self.station_graph:
+            lines = self.lines_per_station[station]
+            for line in lines:
+                node = (station, line)
+                self.weighted_graph[node] = []
+                for neighbor, l in self.station_graph[station]:
+                    if l == line:
+                        self.weighted_graph[node].append(((neighbor, line), self.TRAVEL_TIME))
+                for other_line in lines:
+                    if other_line != line:
+                        self.weighted_graph[node].append(((station, other_line), self.TRANSFER_TIME))
+
+    def find_shortest_path(self, start_station, end_station):
+        """
+        Finds the shortest path from start_station to end_station using Dijkstra's algorithm.
+        Returns: (path, total_time) where path is a list of station names and total_time is in minutes.
+        """
+        if start_station not in self.station_map or end_station not in self.station_map:
+            return None, 0
+        start_id = self.station_map[start_station]
+        end_id = self.station_map[end_station]
+        lines_start = self.lines_per_station[start_id]
+
+        distances = {node: float('inf') for node in self.weighted_graph}
+        for line in lines_start:
+            distances[(start_id, line)] = 0
+        pq = [(0, (start_id, line)) for line in lines_start]
+        heapq.heapify(pq)
+        parent = {node: None for node in self.weighted_graph}
+
+        while pq:
+            dist, current = heapq.heappop(pq)
+            if current[0] == end_id:
+                path = []
+                while current:
+                    path.append(current[0])
+                    current = parent[current]
+                path.reverse()
+                station_path = [self.station_map_inv[sid] for sid in path]
+                return station_path, dist
+            if dist > distances[current]:
+                continue
+            for neighbor, weight in self.weighted_graph[current]:
+                new_dist = dist + weight
+                if new_dist < distances[neighbor]:
+                    distances[neighbor] = new_dist
+                    parent[neighbor] = current
+                    heapq.heappush(pq, (new_dist, neighbor))
+        return None, 0
+
     def add_trip(self, trip, session_token):
+        """Adds a trip description to the database."""
         conn = get_db_connection(session_token)
         cursor = conn.cursor()
         cursor.execute("INSERT INTO trips (description) VALUES (%s)", (trip,))
@@ -343,6 +280,7 @@ class TripManager:
         release_db_connection(conn)
 
     def get_trips(self, session_token):
+        """Retrieves all trip descriptions from the database."""
         conn = get_db_connection(session_token)
         cursor = conn.cursor()
         cursor.execute("SELECT description FROM trips")
@@ -352,31 +290,13 @@ class TripManager:
         return trips
 
     def get_station_id(self, station_name):
-        return self.station_map.get(station_name, "Unknown")
-
-    def find_path(self, start, end):
-        if start not in self.station_graph or end not in self.station_graph:
-            print(f"Start {start} or end {end} not in station_graph")
-            return None
-        visited = set()
-        queue = [(start, [start])]
-        print(f"Starting BFS from {start} to {end}")
-        while queue:
-            current, path = queue.pop(0)
-            print(f"Visiting {current}, Path so far: {path}")
-            if current == end:
-                print(f"Found path: {path}")
-                return path
-            if current not in visited:
-                visited.add(current)
-                for neighbor, line in self.station_graph[current]:
-                    if neighbor not in visited:
-                        print(f"Adding neighbor {neighbor} via {line}")
-                        queue.append((neighbor, path + [neighbor]))
-        print(f"No path found from {start} to {end}")
-        return None
+        """Returns the station ID for a given station name."""
+        if station_name not in self.station_map:
+            raise ValueError(f"Station {station_name} not found")
+        return self.station_map[station_name]
 
     def longest_route_no_repeats(self):
+        """Finds the longest route without repeating stations."""
         def dfs(current, visited):
             longest = [current]
             for neighbor, _ in self.station_graph.get(current, []):
@@ -392,9 +312,10 @@ class TripManager:
             path = dfs(start, {start})
             if len(path) > len(longest_path):
                 longest_path = path
-        return longest_path
+        return [self.station_map_inv[sid] for sid in longest_path]
 
     def get_timetable(self, line, station, current_time):
+        """Generates a timetable for a given line and station."""
         if line not in self.valid_lines:
             return []
         hour = current_time.hour
@@ -415,6 +336,7 @@ class TripManager:
         return times if times else []
 
     def get_next_departure(self, line, station, current_time):
+        """Finds the next departure time from the timetable."""
         timetable = self.get_timetable(line, station, current_time)
         if timetable == ["Station closed!"] or not timetable:
             return None
@@ -425,10 +347,14 @@ class TripManager:
         return None
 
     def find_fastest_path(self, start, end, start_time):
+        """
+        Finds the fastest path considering departure times.
+        Returns: (path, total_time) where total_time is in minutes.
+        """
         start_id = self.get_station_id(start)
         end_id = self.get_station_id(end)
         if start_id not in self.station_graph or end_id not in self.station_graph:
-            return None
+            return None, 0
 
         pq = [(start_time, start_id, [start])]
         earliest = {start_id: start_time}
@@ -443,18 +369,16 @@ class TripManager:
                 continue
 
             for neighbor, line in self.station_graph[current_station]:
-                dep_time = self.get_next_departure(line, current_station, current_time)
+                dep_time = self.get_next_departure(line, self.station_map_inv[current_station], current_time)
                 if dep_time is None:
                     continue
-                travel_time = timedelta(minutes=3)  # Fixed travel time per segment
-                arr_time = dep_time + travel_time
+                # Use TRANSFER_TIME if staying at the same station (transfer), else TRAVEL_TIME
+                time_to_neighbor = self.TRANSFER_TIME if neighbor == current_station else self.TRAVEL_TIME
+                arr_time = dep_time + timedelta(minutes=time_to_neighbor)
 
                 if arr_time < earliest.get(neighbor, datetime.max):
                     earliest[neighbor] = arr_time
-                    new_path = path + [self.station_map_inverse()[neighbor]]
+                    new_path = path + [self.station_map_inv[neighbor]]
                     heapq.heappush(pq, (arr_time, neighbor, new_path))
 
-        return None
-
-    def station_map_inverse(self):
-        return {v: k for k, v in self.station_map.items()}
+        return None, 0
