@@ -46,3 +46,6 @@ Check out the design I created for Blink in Figma—it’s got all the vibes!
 - **Run a good set of unit test on all these functions, had some problem with the station_map and station_graph working with the algorithms but eventually managed to be successful on all tests**
 - **Day 3**
 - Doing research with AI, exploring which algorithm will be used to be used as find_path that take accounts of travel time and waiting time at the station too (A* or Dijkstra).
+- **Day 4**
+- Been planning to migrate station_graph and station_map and schedules to PostgreSQL, doing research on building the database structure that contains all the fields needed while optimal at the same time. Also looking up Redis to implement live fetching for real-time features (eg. looking up trains that will be leaving soon, ...).
+- Going back to the Figma design, prolly need some redo here and there, will most likely working on the color palette and some other shit as well.
