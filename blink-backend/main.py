@@ -1,9 +1,9 @@
 # blink-backend/main.py
+import bcrypt
 from fastapi import FastAPI, HTTPException
 from datetime import datetime
 from trip_manager import TripManager
-from db import close_db_pool, create_session, get_active_connections, get_max_connections, get_all_sessions, get_session_role, ADMIN_USERNAME, ADMIN_PASSWORD, validate_session, session_store
-
+from db import close_db_pool, create_session, get_active_connections, get_max_connections, get_all_sessions, ADMIN_USERNAME, validate_session, session_store,db_pool
 app = FastAPI(title="Blink Backend API", description="API for managing trips on the HCMC Metro")
 
 trip_manager = TripManager()
@@ -30,8 +30,24 @@ async def login():
 @app.post("/admin/login")
 async def admin_login(username: str, password: str):
     """Generate a new session token for an admin user."""
-    if username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
+    if username != ADMIN_USERNAME:
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    
+    # Fetch the stored hash from the database
+    conn = db_pool.getconn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT password_hash FROM users WHERE username = %s", (username,))
+    result = cursor.fetchone()
+    cursor.close()
+    db_pool.putconn(conn)
+    
+    if not result:
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    
+    stored_hash = result[0].encode('utf-8')
+    if not bcrypt.checkpw(password.encode('utf-8'), stored_hash):
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    
     session_token = create_session(role="admin")
     return {"session_token": session_token}
 

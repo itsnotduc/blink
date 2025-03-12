@@ -1,202 +1,55 @@
-# blink-backend/trip_manager.py
 from collections import defaultdict
 import heapq
 from datetime import datetime, timedelta
-from db import get_db_connection, release_db_connection
+from db import get_db_connection, release_db_connection, create_session
 
 class TripManager:
-    TRAVEL_TIME = 3  # Time between consecutive stations on the same line (minutes)
-    TRANSFER_TIME = 5  # Time to transfer between lines at the same station (minutes)
-
     def __init__(self):
-        # Station map with station names to IDs
-        self.station_map = {
-            "Mien Dong": "S101MD",
-            "Suoi Tien Amusement Park": "S102STAP",
-            "Saigon Hi-tech Park": "S103SHTP",
-            "Thu Duc": "S104TD",
-            "Binh Thai": "S105BT",
-            "Phuoc Long": "S106PL",
-            "Rach Chiec": "S107RC",
-            "Anphu": "S108AP",
-            "Thao Dien": "S109TD",
-            "Saigon Bridge": "S110SB",
-            "Van Thanh": "S111VT",
-            "Ba Son": "S112BS",
-            "Opera House": "S113OH",
-            "Ben Thanh": "S114BT",
-            "Cu Chi": "S201CC",
-            "An Suong": "S202AS",
-            "Tan Thoi Nhat": "S203TTN",
-            "Tan Binh": "S204TB",
-            "Pham Van Bach": "S205PVB",
-            "Ba Queo": "S206BQ",
-            "Nguyen Hong Dao": "S207NHD",
-            "Bay Hien": "S208BH",
-            "Pham Van Hai": "S209PVH",
-            "Le Thi Rieng Park": "S210LTRP",
-            "Hoa Hung": "S211HH",
-            "Dan Chu": "S212DC",
-            "Tao Dan": "S213TD",
-            "Ham Nghi": "S214HN",
-            "Thu Thiem Square": "S215TTS",
-            "Mai Chi Tho": "S216MCT",
-            "Tran Nao": "S217TN",
-            "Binh Khanh": "S218BK",
-            "Thu Thiem": "S219TT",
-            "Tan Kien": "S301TK",
-            "Eastern Bus Station": "S302EBS",
-            "Phu Lam Park": "S303PLP",
-            "Phu Lam": "S304PL",
-            "Cay Go": "S305CG",
-            "Cho Lon": "S306CL",
-            "Thuan Kieu Plaza": "S307TKP",
-            "University of Meds and Pharma": "S308UMP",
-            "Hoa Binh Park": "S309HBP",
-            "Cong Hoa": "S310CH",
-            "Thai Binh": "S311TB",
-            "Di An": "S351DA",
-            "Ga An Binh": "S352GAB",
-            "Tam Binh": "S353TB",
-            "Hiep Binh Phuoc": "S354HBP",
-            "Binh Trieu": "S355BT",
-            "Xo Viet Nghe Tinh": "S356XVNT",
-            "Hang Xanh": "S357HX",
-            "Nguyen Cuu Van": "S358NCV",
-            "Saigon Zoo": "S359SZ",
-            "Hoa Lu": "S360HL",
-            "Turtle Lake": "S361TL",
-            "Independence Palace": "S362IP",
-            "Thanh Xuan": "S401TX",
-            "Nga Tu Ga": "S402NTG",
-            "An Loc Bridge": "S403ALB",
-            "An Nhon": "S404AN",
-            "Nguyen Van Luong": "S405NVL",
-            "Go Vap": "S406GV",
-            "175 Hospital": "S407175H",
-            "Gia Dinh Park": "S408GDP",
-            "Phu Nhuan": "S409PN",
-            "Kieu Bridge": "S410KB",
-            "Le Van Tam Park": "S411LVTP",
-            "Ong Lanh Bridge": "S412OLB",
-            "Yersin": "S413YS",
-            "Khanh Hoa": "S414KH",
-            "Tan Hung": "S415TH",
-            "Nguyen Huu Tho": "S416NHT",
-            "Nguyen Van Linh": "S417NVL",
-            "Phuoc Kien": "S418PK",
-            "Pham Huu Lau": "S419PHL",
-            "Ba Chiem": "S420BC",
-            "Long Thoi": "S421LT",
-            "Hiep Phuoc": "S422HP",
-            "Tan Son Nhat": "S451TSN",
-            "Lang Cha Ca": "S452LCC",
-            "Hoang Van Thu Park": "S461HVTP",
-            "Ba Chieu": "S501BC",
-            "Nguyen Van Dau": "S502NVD",
-            "Tan Binh Market": "S503TBM",
-            "Bac Hai": "S504BH",
-            "HCMC Uni of Tech": "S505HUT",
-            "Phu Tho": "S506PT",
-            "Xom Cui": "S507XC",
-            "District 8 Bus Station": "S508D8BS",
-            "Binh Hung": "S509BH",
-            "Can Giuoc": "S510CG",
-            "Au Co": "S601AC",
-            "Vuon Lai": "S602VL",
-            "Tan Phu": "S603TP",
-            "Hoa Binh": "S604HB",
-            "Luy Ban Bich": "S605LBB",
-            "Thanh Da": "M201TD",
-            "Binh An": "M202BA",
-            "Luong Dinh Cua": "M203LDC",
-            "South Thu Thiem": "M204STT",
-            "Huynh Tan Phat": "M205HTP",
-            "Tan Thuan Tay": "M206TTT",
-            "Nguyen Thi Thap": "M207NTT",
-            "Phu My Hung": "M208PMH",
-            "Nguyen Duc Canh": "M209NDC",
-            "RMIT": "M210RMIT",
-            "Cau Ong Be": "M211COB",
-            "Pham Hung": "M212PH",
-            "Rach Hiep An": "M213RHA",
-            "Tan Chanh Hiep": "M301TCH",
-            "Quang Trung Software City": "M302QTSC",
-            "Phan Huy Ich": "M303PHI",
-            "Tan Son": "M304TS",
-            "Hanh Thong Tay": "M305HTT",
-            "Thong Nhat": "M306TN",
-            "Xom Thuoc": "M307XT",
-        }
+        # Initialize database connection for dynamic data
+        conn = get_db_connection(create_session(role="user"))
+        cursor = conn.cursor()
 
-        # Define line sequences
-        line1 = ["S101MD", "S102STAP", "S103SHTP", "S104TD", "S105BT", "S106PL", "S107RC",
-                 "S108AP", "S109TD", "S110SB", "S111VT", "S112BS", "S113OH", "S114BT"]
-        line2 = ["S201CC", "S202AS", "S203TTN", "S204TB", "S205PVB", "S206BQ", "S207NHD",
-                 "S208BH", "S209PVH", "S210LTRP", "S211HH", "S212DC", "S213TD", "S114BT",
-                 "S214HN", "S215TTS", "S216MCT", "S217TN", "S218BK", "S219TT"]
-        line3a = ["S301TK", "S302EBS", "S303PLP", "S304PL", "S305CG", "S306CL", "S307TKP",
-                  "S308UMP", "S309HBP", "S310CH", "S311TB", "S114BT"]
-        line3b = ["S351DA", "S352GAB", "S353TB", "S354HBP", "S355BT", "S356XVNT", "S357HX",
-                  "S358NCV", "S359SZ", "S360HL", "S361TL", "S362IP", "S213TD", "S310CH"]
-        line4 = ["S401TX", "S402NTG", "S403ALB", "S404AN", "S405NVL", "S406GV", "S407175H",
-                 "S408GDP", "S409PN", "S410KB", "S411LVTP", "S361TL", "S114BT", "S412OLB",
-                 "S413YS", "S414KH", "S415TH", "S416NHT", "S417NVL", "S418PK", "S419PHL",
-                 "S420BC", "S421LT", "S422HP"]
-        line4b = ["S408GDP", "S451TSN", "S452LCC"]
-        line4b1 = ["S451TSN", "S461HVTP"]
-        line5 = ["S110SB", "S357HX", "S501BC", "S502NVD", "S409PN", "S461HVTP", "S452LCC",
-                 "S208BH", "S503TBM", "S504BH", "S505HUT", "S506PT", "S308UMP", "S507XC",
-                 "S508D8BS", "S509BH", "S510CG"]
-        line6 = ["S206BQ", "S601AC", "S602VL", "S603TP", "S604HB", "S605LBB", "S304PL"]
-        mr2 = ["M201TD", "S109TD", "M202BA", "M203LDC", "S217TN", "M204STT", "M205HTP",
-               "M206TTT", "M207NTT", "M208PMH", "M209NDC", "S417NVL", "M210RMIT", "M211COB",
-               "M212PH", "M213RHA", "S509BH"]
-        mr3 = ["M301TCH", "M302QTSC", "M303PHI", "M304TS", "M305HTT", "M306TN", "M307XT",
-               "S406GV"]
+        # Fetch station map from stations table
+        cursor.execute("SELECT station_id, station_name FROM stations")
+        self.station_map = {row[0]: row[1] for row in cursor.fetchall()}
+        self.station_map_inv = {v: k for k, v in self.station_map.items()}
 
-        # Dictionary of all lines
-        lines = {
-            "Line 1": line1,
-            "Line 2": line2,
-            "Line 3A": line3a,
-            "Line 3B": line3b,
-            "Line 4": line4,
-            "Line 4B": line4b,
-            "Line 4B1": line4b1,
-            "Line 5": line5,
-            "Line 6": line6,
-            "MR2": mr2,
-            "MR3": mr3
-        }
-
-        # Build station_graph
+        # Fetch lines and build station_graph
         self.station_graph = defaultdict(list)
-        for line_name, stations in lines.items():
-            for i in range(len(stations) - 1):
-                self.station_graph[stations[i]].append((stations[i + 1], line_name))
-                self.station_graph[stations[i + 1]].append((stations[i], line_name))
+        cursor.execute("""
+            SELECT line_id, line_name FROM lines
+        """)
+        lines_data = cursor.fetchall()
+        self.valid_lines = {row[1] for row in lines_data}
+        for line_id, line_name in lines_data:
+            cursor.execute("""
+                SELECT from_station_id, to_station_id FROM routes WHERE line_id = %s
+            """, (line_id,))
+            route_segments = cursor.fetchall()
+            for from_station, to_station in route_segments:
+                self.station_graph[from_station].append((to_station, line_name))
+                self.station_graph[to_station].append((from_station, line_name))
 
-        # Add transfer connections explicitly (e.g., S114BT connects to multiple lines)
+        # Fetch transfer stations (simplified for now, could be enhanced with a table)
         transfer_stations = {
-            "S114BT": ["Line 1", "Line 2", "Line 3A", "Line 4"],  # Ben Thanh
-            "S109TD": ["Line 1", "MR2"],  # Thao Dien
-            "S110SB": ["Line 1", "Line 5"],  # Saigon Bridge
-            "S208BH": ["Line 2", "Line 5"],  # Bay Hien
-            "S357HX": ["Line 3B", "Line 5"],  # Hang Xanh
-            "S409PN": ["Line 4", "Line 5"],  # Phu Nhuan
-            "S461HVTP": ["Line 4B1", "Line 5"],  # Hoang Van Thu Park
-            "S452LCC": ["Line 4B", "Line 5"],  # Lang Cha Ca
-            "S308UMP": ["Line 3A", "Line 5"],  # University of Meds and Pharma
-            "S361TL": ["Line 3B", "Line 4"],  # Turtle Lake
-            "S213TD": ["Line 2", "Line 3B"],  # Tao Dan
-            "S310CH": ["Line 3A", "Line 3B"],  # Cong Hoa
-            "S417NVL": ["Line 4", "MR2"],  # Nguyen Van Linh
-            "S509BH": ["Line 5", "MR2"],  # Binh Hung
-            "S406GV": ["Line 4", "MR3"],  # Go Vap
-            "S304PL": ["Line 3A", "Line 6"],  # Phu Lam
-            "S206BQ": ["Line 2", "Line 6"],  # Ba Queo
-            "S217TN": ["Line 2", "MR2"],  # Tran Nao
+            "S114BT": ["Line 1", "Line 2", "Line 3A", "Line 4"],
+            "S109TD": ["Line 1", "MR2"],
+            "S110SB": ["Line 1", "Line 5"],
+            "S208BH": ["Line 2", "Line 5"],
+            "S357HX": ["Line 3B", "Line 5"],
+            "S409PN": ["Line 4", "Line 5"],
+            "S461HVTP": ["Line 4B1", "Line 5"],
+            "S452LCC": ["Line 4B", "Line 5"],
+            "S308UMP": ["Line 3A", "Line 5"],
+            "S361TL": ["Line 3B", "Line 4"],
+            "S213TD": ["Line 2", "Line 3B"],
+            "S310CH": ["Line 3A", "Line 3B"],
+            "S417NVL": ["Line 4", "MR2"],
+            "S509BH": ["Line 5", "MR2"],
+            "S406GV": ["Line 4", "MR3"],
+            "S304PL": ["Line 3A", "Line 6"],
+            "S206BQ": ["Line 2", "Line 6"],
+            "S217TN": ["Line 2", "MR2"],
         }
         for station, lines_at_station in transfer_stations.items():
             for line1 in lines_at_station:
@@ -204,17 +57,14 @@ class TripManager:
                     if line1 != line2:
                         self.station_graph[station].append((station, line2))
 
-        self.valid_lines = {"Line 1", "Line 2", "Line 3A", "Line 3B", "Line 4", "Line 4B",
-                            "Line 4B1", "Line 5", "Line 6", "MR2", "MR3"}
-        self.route_tree = None
-        self.station_map_inv = {v: k for k, v in self.station_map.items()}
+        cursor.close()
+        release_db_connection(conn)
         self.build_weighted_graph()
+
     def build_weighted_graph(self):
-        """
-        Constructs a weighted graph where nodes are (station_id, line) tuples.
-        - Travel edges: between consecutive stations on the same line (weight = TRAVEL_TIME).
-        - Transfer edges: between different lines at the same station (weight = TRANSFER_TIME).
-        """
+        """Builds a weighted graph using travel_time from routes and transfer_times."""
+        conn = get_db_connection(create_session(role="user"))
+        cursor = conn.cursor()
         self.lines_per_station = defaultdict(set)
         for station in self.station_graph:
             for neighbor, line in self.station_graph[station]:
@@ -226,22 +76,48 @@ class TripManager:
             for line in lines:
                 node = (station, line)
                 self.weighted_graph[node] = []
-                for neighbor, l in self.station_graph[station]:
-                    if l == line:
-                        self.weighted_graph[node].append(((neighbor, line), self.TRAVEL_TIME))
+                # Fetch travel time for consecutive stations on the same line
+                cursor.execute("""
+                    SELECT r.to_station_id, r.travel_time
+                    FROM routes r
+                    WHERE r.from_station_id = %s AND r.line_id = (
+                        SELECT line_id FROM lines WHERE line_name = %s
+                    )
+                """, (station, line))
+                route_data = cursor.fetchall()
+                for to_station, travel_time in route_data:
+                    current_hour = datetime.now().hour
+                    is_peak = (7 <= current_hour < 9) or (17 <= current_hour < 19)
+                    # Travel time is constant, no peak/off-peak distinction
+                    self.weighted_graph[node].append(((to_station, line), travel_time))
+
+                # Add transfer edges using transfer_times table
                 for other_line in lines:
                     if other_line != line:
-                        self.weighted_graph[node].append(((station, other_line), self.TRANSFER_TIME))
+                        cursor.execute("""
+                            SELECT transfer_time_peak, transfer_time_offpeak
+                            FROM transfer_times tt
+                            JOIN routes r ON tt.route_id = r.route_id
+                            WHERE r.from_station_id = %s AND r.line_id = (
+                                SELECT line_id FROM lines WHERE line_name = %s
+                            )
+                        """, (station, line))
+                        transfer_data = cursor.fetchone()
+                        if transfer_data:
+                            transfer_time_peak, transfer_time_offpeak = transfer_data
+                            transfer_time = transfer_time_peak if is_peak else transfer_time_offpeak
+                            self.weighted_graph[node].append(((station, other_line), transfer_time))
 
+        cursor.close()
+        release_db_connection(conn)
+
+    # In trip_manager.py
     def find_shortest_path(self, start_station, end_station):
-        """
-        Finds the shortest path from start_station to end_station using Dijkstra's algorithm.
-        Returns: (path, total_time) where path is a list of station names and total_time is in minutes.
-        """
-        if start_station not in self.station_map or end_station not in self.station_map:
+        """Finds the shortest path using Dijkstra's algorithm."""
+        if start_station not in self.station_map_inv or end_station not in self.station_map_inv:
             return None, 0
-        start_id = self.station_map[start_station]
-        end_id = self.station_map[end_station]
+        start_id = self.station_map_inv[start_station]  # Use station_map_inv to get station_id
+        end_id = self.station_map_inv[end_station]      # Use station_map_inv to get station_id
         lines_start = self.lines_per_station[start_id]
 
         distances = {node: float('inf') for node in self.weighted_graph}
@@ -259,7 +135,7 @@ class TripManager:
                     path.append(current[0])
                     current = parent[current]
                 path.reverse()
-                station_path = [self.station_map_inv[sid] for sid in path]
+                station_path = [self.station_map[sid] for sid in path]  # Convert back to station names
                 return station_path, dist
             if dist > distances[current]:
                 continue
@@ -271,30 +147,47 @@ class TripManager:
                     heapq.heappush(pq, (new_dist, neighbor))
         return None, 0
 
-    def add_trip(self, trip, session_token):
-        """Adds a trip description to the database."""
+    # In trip_manager.py
+    def add_trip(self, trip, session_token, user_id=None, start_station=None, end_station=None, start_time=None):
+        """Adds a trip to the database with optional detailed fields."""
         conn = get_db_connection(session_token)
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO trips (description) VALUES (%s)", (trip,))
-        conn.commit()
-        cursor.close()
-        release_db_connection(conn)
+        try:
+            cursor.execute("""
+                INSERT INTO trips (user_id, start_station_id, end_station_id, start_time, description)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING trip_id
+            """, (user_id, self.station_map.get(start_station), self.station_map.get(end_station), start_time, trip))
+            trip_id = cursor.fetchone()[0]
+            conn.commit()
+            return {"message": f"Trip {trip_id} added successfully", "trip_id": trip_id}  # Include trip_id in response
+        except Exception as e:
+            conn.rollback()
+            raise Exception(f"Error adding trip: {str(e)}")
+        finally:
+            cursor.close()
+            release_db_connection(conn)
 
     def get_trips(self, session_token):
-        """Retrieves all trip descriptions from the database."""
+        """Retrieves all trips from the database."""
         conn = get_db_connection(session_token)
         cursor = conn.cursor()
-        cursor.execute("SELECT description FROM trips")
-        trips = [row[0] for row in cursor.fetchall()]
-        cursor.close()
-        release_db_connection(conn)
-        return trips
+        try:
+            cursor.execute("SELECT description FROM trips WHERE description IS NOT NULL")
+            trips = [row[0] for row in cursor.fetchall()]
+            return {"trips": trips}
+        except Exception as e:
+            raise Exception(f"Error retrieving trips: {str(e)}")
+        finally:
+            cursor.close()
+            release_db_connection(conn)
 
+        # In trip_manager.py
     def get_station_id(self, station_name):
         """Returns the station ID for a given station name."""
-        if station_name not in self.station_map:
+        if station_name not in self.station_map_inv:  # Use station_map_inv
             raise ValueError(f"Station {station_name} not found")
-        return self.station_map[station_name]
+        return self.station_map_inv[station_name]  # Use station_map_inv
 
     def longest_route_no_repeats(self):
         """Finds the longest route without repeating stations."""
@@ -335,6 +228,33 @@ class TripManager:
             if times:
                 break
         return times if times else []
+    def get_schedules(self, session_token, line_name, station_name):
+        """Retrieves the schedule for a given line and station from the database."""
+        conn = get_db_connection(session_token)
+        cursor = conn.cursor()
+        try:
+            station_id = self.station_map.get(station_name)
+            if not station_id:
+                raise ValueError(f"Station {station_name} not found")
+            
+            cursor.execute("""
+                SELECT departure_time, day_type
+                FROM schedules
+                WHERE line_id = (SELECT line_id FROM lines WHERE line_name = %s)
+                AND station_id = %s
+                ORDER BY departure_time
+            """, (line_name, station_id))
+            schedules = cursor.fetchall()
+            if not schedules:
+                return {"message": f"No schedules found for {station_name} on {line_name}"}
+            
+            schedule_list = [{"departure_time": row[0].strftime("%H:%M"), "day_type": row[1]} for row in schedules]
+            return {"line": line_name, "station": station_name, "schedules": schedule_list}
+        except Exception as e:
+            raise Exception(f"Error retrieving schedules: {str(e)}")
+        finally:
+            cursor.close()
+            release_db_connection(conn)
 
     def get_next_departure(self, line, station, current_time):
         """Finds the next departure time from the timetable."""
@@ -348,10 +268,7 @@ class TripManager:
         return None
 
     def find_fastest_path(self, start, end, start_time):
-        """
-        Finds the fastest path considering departure times.
-        Returns: (path, total_time) where total_time is in minutes.
-        """
+        """Finds the fastest path considering departure times."""
         start_id = self.get_station_id(start)
         end_id = self.get_station_id(end)
         if start_id not in self.station_graph or end_id not in self.station_graph:
@@ -373,9 +290,43 @@ class TripManager:
                 dep_time = self.get_next_departure(line, self.station_map_inv[current_station], current_time)
                 if dep_time is None:
                     continue
-                # Use TRANSFER_TIME if staying at the same station (transfer), else TRAVEL_TIME
-                time_to_neighbor = self.TRANSFER_TIME if neighbor == current_station else self.TRAVEL_TIME
-                arr_time = dep_time + timedelta(minutes=time_to_neighbor)
+                # Fetch travel time from routes table
+                conn = get_db_connection(create_session(role="user"))
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT travel_time
+                    FROM routes
+                    WHERE from_station_id = %s AND to_station_id = %s AND line_id = (
+                        SELECT line_id FROM lines WHERE line_name = %s
+                    )
+                """, (current_station, neighbor, line))
+                route_data = cursor.fetchone()
+                cursor.close()
+                release_db_connection(conn)
+                if route_data:
+                    travel_time = route_data[0]
+                else:
+                    travel_time = 5  # Default travel time if not found
+
+                # Fetch transfer time if applicable (same station, different line)
+                if current_station == neighbor:
+                    cursor = get_db_connection(create_session(role="user")).cursor()
+                    cursor.execute("""
+                        SELECT transfer_time_peak, transfer_time_offpeak
+                        FROM transfer_times tt
+                        JOIN routes r ON tt.route_id = r.route_id
+                        WHERE r.from_station_id = %s AND r.line_id = (
+                            SELECT line_id FROM lines WHERE line_name = %s
+                        )
+                    """, (current_station, line))
+                    transfer_data = cursor.fetchone()
+                    cursor.close()
+                    release_db_connection(conn)
+                    if transfer_data:
+                        transfer_time_peak, transfer_time_offpeak = transfer_data
+                        is_peak = (7 <= current_time.hour < 9) or (17 <= current_time.hour < 19)
+                        travel_time = transfer_time_peak if is_peak else transfer_time_offpeak
+                arr_time = dep_time + timedelta(minutes=travel_time)
 
                 if arr_time < earliest.get(neighbor, datetime.max):
                     earliest[neighbor] = arr_time
@@ -383,3 +334,5 @@ class TripManager:
                     heapq.heappush(pq, (arr_time, neighbor, new_path))
 
         return None, 0
+
+from db import create_session  # Import here to avoid circular import

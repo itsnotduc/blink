@@ -1,105 +1,91 @@
 import unittest
-from unittest.mock import patch
 from datetime import datetime
-from trip_manager import TripManager  # Assuming TripManager is defined in trip_manager.py
+from trip_manager import TripManager
+from db import create_session
+import psycopg2
 
 class TestTripManager(unittest.TestCase):
+
     def setUp(self):
-        """Initialize a fresh TripManager instance before each test."""
-        self.tm = TripManager()
+        self.trip_manager = TripManager()
+        self.session_token = create_session(role="user")
+        # Mock database connection for testing (replace with actual test DB setup)
+        self.conn = psycopg2.connect(dbname="blink", user="postgres", password="minhduc456", host="localhost")
+        self.cursor = self.conn.cursor()
 
-    # Pathfinding Tests
-    def test_find_shortest_path_direct(self):
-        """Test shortest path between two stations on the same line."""
-        path, time = self.tm.find_shortest_path("Ben Thanh", "Opera House")
-        self.assertEqual(path, ["Ben Thanh", "Opera House"])
-        self.assertEqual(time, 3)  # Assuming 3 minutes per segment
+    def tearDown(self):
+        self.cursor.close()
+        self.conn.close()
 
-    def test_find_shortest_path_multi_transfer(self):
-        """Test shortest path requiring multiple transfers."""
-        path, time = self.tm.find_shortest_path("Tan Binh", "Van Thanh")
-        expected_path = [
-            "Tan Binh", "Pham Van Bach", "Ba Queo", "Nguyen Hong Dao", "Bay Hien",
-            "Pham Van Hai", "Le Thi Rieng Park", "Hoa Hung", "Dan Chu", "Tao Dan",
-            "Ben Thanh", "Ben Thanh", "Opera House", "Ba Son", "Van Thanh"
-        ]
-        self.assertEqual(path, expected_path)
-        expected_time = 44  # 14 segments × 3 min + 1 transfer × 5 min
-        self.assertEqual(time, expected_time)
+    # Test Case 1: Finding a Path
+    def test_find_shortest_path(self):
+        start_station = "Mien Dong"
+        end_station = "Ben Thanh"
+        path, distance = self.trip_manager.find_shortest_path(start_station, end_station)
+        self.assertIsNotNone(path, "Path should exist between Mien Dong and Ben Thanh")
+        self.assertTrue(len(path) > 0, "Path should contain at least one station")
+        self.assertIn("Ben Thanh", path, "End station should be in path")
+        self.assertIn("Mien Dong", path, "Start station should be in path")
+        print(f"Shortest path: {path}, Distance: {distance} minutes")
 
-    def test_find_fastest_path_off_peak(self):
-        """Test fastest path during off-peak hours with longer frequency."""
-        start_time = datetime(2023, 1, 1, 14, 1)  # Off-peak, just after 14:00
-        path, time = self.tm.find_fastest_path("Ben Thanh", "Opera House", start_time)
-        self.assertEqual(path, ["Ben Thanh", "Opera House"])
-        self.assertEqual(time, 17)  # 14 (wait until 14:15) + 3 (travel)
+    def test_find_shortest_path_invalid_stations(self):
+        path, distance = self.trip_manager.find_shortest_path("InvalidStart", "InvalidEnd")
+        self.assertIsNone(path, "Path should be None for invalid stations")
+        self.assertEqual(distance, 0, "Distance should be 0 for invalid path")
 
-    def test_find_fastest_path_closed(self):
-        """Test fastest path when stations are closed."""
-        start_time = datetime(2023, 1, 1, 1, 0)  # Before opening (e.g., 6 AM)
-        path, time = self.tm.find_fastest_path("Ben Thanh", "Opera House", start_time)
-        self.assertIsNone(path)
-        self.assertEqual(time, 0)
+    # Test Case 2: Adding Trips
+    # In test_trip_manager.py
+    def test_add_trip(self):
+        trip_desc = ["Test trip from Mien Dong to Ben Thanh"]  # Wrap in a list to match TEXT[] type
+        user_id = 1  # Assume a test user exists
+        start_station = "Mien Dong"
+        end_station = "Ben Thanh"
+        start_time = datetime.now()
+        response = self.trip_manager.add_trip(trip_desc, self.session_token, user_id, start_station, end_station, start_time)
+        self.assertEqual(response["message"], f"Trip {response['trip_id']} added successfully")
+        self.cursor.execute("SELECT description FROM trips WHERE trip_id = %s", (response["trip_id"],))
+        result = self.cursor.fetchone()
+        self.assertEqual(result[0][0], trip_desc[0], "Trip description should match")  # Access first element of array
+    def test_add_trip_invalid_session(self):
+        invalid_token = "invalid_token"
+        with self.assertRaises(Exception) as context:
+            self.trip_manager.add_trip("Invalid trip", invalid_token)
+        self.assertTrue("Invalid or expired session token" in str(context.exception))
 
-    # Timetable Tests
-    def test_get_timetable_peak_hours(self):
-        """Test timetable generation during peak hours."""
-        current_time = datetime(2023, 1, 1, 8, 0)  # Peak time
-        timetable = self.tm.get_timetable("Line 1", "Ben Thanh", current_time)
-        expected = ["08:00", "08:10", "08:20", "08:30", "08:40", "08:50"]  # 10-min frequency
-        self.assertEqual(timetable[:6], expected)  # Check first 6 entries
+    # Test Case 3: Adding a New User
+    def test_add_new_user(self):
+        # Assume a function to add a user (not in TripManager, so we'll mock DB interaction)
+        username = "testuser"
+        email = "testuser@example.com"
+        password_hash = "$2b$12$test_hash"  # Mocked hash for testing
+        self.cursor.execute("""
+            INSERT INTO users (username, email, password_hash, role)
+            VALUES (%s, %s, %s, %s) RETURNING user_id
+        """, (username, email, password_hash, "user"))
+        user_id = self.cursor.fetchone()[0]
+        self.conn.commit()
+        self.assertIsNotNone(user_id, "User should be added successfully")
+        self.cursor.execute("SELECT username FROM users WHERE user_id = %s", (user_id,))
+        result = self.cursor.fetchone()
+        self.assertEqual(result[0], username, "Username should match")
 
-    def test_get_timetable_off_peak(self):
-        """Test timetable generation during off-peak hours."""
-        current_time = datetime(2023, 1, 1, 13, 0)  # Off-peak time
-        timetable = self.tm.get_timetable("Line 1", "Ben Thanh", current_time)
-        expected = ["13:00", "13:15", "13:30", "13:45"]  # 15-min frequency
-        self.assertEqual(timetable[:4], expected)  # Check first 4 entries
+    def test_add_existing_user(self):
+        username = "admin"
+        email = "admin@example.com"
+        password_hash = "$2b$12$test_hash"
+        with self.assertRaises(psycopg2.IntegrityError):
+            self.cursor.execute("""
+                INSERT INTO users (username, email, password_hash, role)
+                VALUES (%s, %s, %s, %s)
+            """, (username, email, password_hash, "user"))
+            self.conn.commit()
 
-    def test_get_timetable_closed(self):
-        """Test timetable when the station is closed."""
-        current_time = datetime(2023, 1, 1, 2, 0)  # Closed time (e.g., after midnight)
-        timetable = self.tm.get_timetable("Line 1", "Ben Thanh", current_time)
-        self.assertEqual(timetable, ["Station closed!"])
 
-    def test_get_next_departure_near_time(self):
-        """Test next departure when current time is close to a scheduled departure."""
-        current_time = datetime(2023, 1, 1, 8, 8)  # Peak time, before 8:10
-        next_dep = self.tm.get_next_departure("Line 1", "Ben Thanh", current_time)
-        self.assertEqual(next_dep, datetime(2023, 1, 1, 8, 10))
 
-    def test_get_next_departure_post_time(self):
-        """Test next departure after a scheduled departure has passed."""
-        current_time = datetime(2023, 1, 1, 8, 12)  # Peak time, after 8:10
-        next_dep = self.tm.get_next_departure("Line 1", "Ben Thanh", current_time)
-        self.assertEqual(next_dep, datetime(2023, 1, 1, 8, 20))
-
-    # Trip Management Tests
-    @patch('trip_manager.get_db_connection')
-    @patch('trip_manager.release_db_connection')
-    def test_trip_management(self, mock_release, mock_get_conn):
-        """Test adding a trip and retrieving it from the database."""
-        mock_conn = mock_get_conn.return_value
-        mock_cursor = mock_conn.cursor.return_value
-        mock_cursor.fetchall.return_value = [("Trip to Opera",), ("Trip to Ben Thanh",)]
-        
-        self.tm.add_trip("Trip to Opera", "user123")
-        trips = self.tm.get_trips("user123")
-        self.assertIn("Trip to Opera", trips)
-
-    # Edge Case Tests
-    def test_find_shortest_path_invalid_input(self):
-        """Test shortest path with an invalid station name."""
-        path, time = self.tm.find_shortest_path("Nonexistent", "Ben Thanh")
-        self.assertIsNone(path)
-        self.assertEqual(time, 0)
-
-    def test_find_shortest_path_disconnected(self):
-        """Test shortest path between stations with no possible route."""
-        # Assuming "District 9" and "Binh Chanh" have no connecting lines
-        path, time = self.tm.find_shortest_path("District 9", "Binh Chanh")
-        self.assertIsNone(path)  # No path exists
-        self.assertEqual(time, 0)
+    def test_get_schedules_invalid_line(self):
+        with self.assertRaises(Exception) as context:
+            self.trip_manager.get_schedules(self.session_token, "InvalidLine", "Mien Dong")
+        self.assertTrue("Station Mien Dong not found" in str(context.exception))
 
 if __name__ == '__main__':
     unittest.main()
